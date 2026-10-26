@@ -1,0 +1,4 @@
+node_modules/
+vendor/
+*.RData
+.DS_Store
