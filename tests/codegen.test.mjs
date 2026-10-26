@@ -5,12 +5,14 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { exampleProject } from '../js/example.js';
+import { addFixtures } from './fixtures.mjs';
 import { getItem, newDataTable, newTransform, newAnalysis, newGraph, itemCode, topoOrder, itemPackages } from '../js/model.js';
 import { dataSchema } from '../js/codegen/data.js';
 import { testDefaults, usesMixedModel } from '../js/codegen/stats.js';
 import { GEOMS, geomDefaults, PALETTES } from '../js/codegen/graph.js';
 
 const p = exampleProject();
+addFixtures(p);
 const plant = p.items.find((i) => i.name === 'Plant growth');
 const plantLong = p.items.find((i) => i.name === 'Plant growth (long)');
 const tooth = p.items.find((i) => i.name === 'Tooth growth');
@@ -107,6 +109,29 @@ newGraph(p, { name: 'Mixed brackets', layers: [
   { id: 'l2', geom: 'mean_connect', dataset: rm.id, aes: { x: map('time'), y: map('Body weight'), colour: map('genotype') } }],
   annotations: [{ id: 'a1', kind: 'brackets', analysis: mixed.id, format: 'p', hide_ns: false }, { id: 'a2', kind: 'label', analysis: mixed.id, position: 'bottom-right' }] });
 
+// Formatting options from the panel under the graph.
+newGraph(p, {
+  name: 'Styled',
+  layers: [{ id: 'l1', geom: 'jitter', dataset: plantLong.id, aes: { x: map('group'), y: map('weight'), colour: map('group') }, params: geomDefaults('jitter') }],
+  labels: { title: 'Styled title', subtitle: 'Sub', x: '', y: 'Weight (g)' },
+  theme: { name: 'classic', base_size: 12, legend: 'bottom' },
+  style: {
+    family: 'serif', axis_line: 1.2,
+    title: { size: 18, bold: false, italic: true, underline: true, align: 'left' },
+    x_title: { underline: true }, y_title: { size: 16, italic: true },
+    x_text: { size: 12, angle: 45, bold: true }, y_text: { angle: 90, italic: true }, legend_text: { size: 9 },
+  },
+  y_scale: { trans: 'identity', min: 3, max: 7, step: 0.5, format: 'n1', reverse: true },
+});
+newGraph(p, {
+  name: 'Log axis formats',
+  layers: [{ id: 'l1', geom: 'point', dataset: dnase.id, aes: { x: map('concentration'), y: map('density') } }],
+  x_scale: { trans: 'log10', format: 'pow10' },
+  y_scale: { trans: 'identity', from_zero: true, step: 0.25, format: 'pct100' },
+  style: { y_title: { underline: true, bold: true }, x_title: { bold: false }, title: { align: 'right' } },
+  theme: { name: 'prism', base_size: 14, x_angle: 90 },
+});
+
 // Schemas: data tables from JS, transforms unknown (null) like before R runs.
 const schemaOf = (id) => {
   const it = getItem(p, id);
@@ -126,7 +151,7 @@ for (const it of items.filter((x) => x.kind === 'analysis' && usesMixedModel(x))
   const opts = { mixedEngine: 'nlme' };
   jobs.push({ id: it.id, name: `${it.name} [nlme]`, kind: it.kind, rname: it.rname, code: itemCode(p, it, schemaOf, opts), packages: itemPackages(it, opts) });
 }
-const dir = mkdtempSync(join(tmpdir(), 'pbtest-'));
+const dir = mkdtempSync(join(tmpdir(), 'agtest-'));
 writeFileSync(join(dir, 'jobs.json'), JSON.stringify(jobs));
 writeFileSync(join(dir, 'run.R'), `
 suppressPackageStartupMessages({ library(ggplot2); library(dplyr); library(tidyr) })
@@ -135,10 +160,10 @@ jobs <- jsonlite::fromJSON(${JSON.stringify(join(dir, 'jobs.json'))}, simplifyVe
 fails <- 0
 for (j in jobs) {
   if (!is.null(j$codegenError)) { cat(sprintf("CODEGEN  %-40s %s\\n", j$name, j$codegenError)); fails <- fails + 1; next }
-  r <- jsonlite::fromJSON(pb_eval_json(j$code))
-  if (r$ok && j$kind == "graph") r <- jsonlite::fromJSON(pb_draw(get(j$rname), tempfile(fileext = ".svg"), "svg", j$w, j$h))
-  if (r$ok && j$kind == "analysis") invisible(pb_result_json(get(j$rname)))
-  if (r$ok && j$kind %in% c("data", "transform")) invisible(pb_describe(get(j$rname)))
+  r <- jsonlite::fromJSON(ag_eval_json(j$code))
+  if (r$ok && j$kind == "graph") r <- jsonlite::fromJSON(ag_draw(get(j$rname), tempfile(fileext = ".svg"), "svg", j$w, j$h))
+  if (r$ok && j$kind == "analysis") invisible(ag_result_json(get(j$rname)))
+  if (r$ok && j$kind %in% c("data", "transform")) invisible(ag_describe(get(j$rname)))
   w <- if (length(r$warnings)) paste0("  [warnings: ", paste(r$warnings, collapse = " | "), "]") else ""
   if (!r$ok) { fails <- fails + 1; cat(sprintf("FAIL     %-40s %s\\n---\\n%s\\n---\\n", j$name, r$error, j$code)) }
   else cat(sprintf("ok       %-40s%s\\n", j$name, substr(w, 1, 200)))

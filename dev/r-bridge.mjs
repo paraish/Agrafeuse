@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Serve Plotbench locally and run its R code in your own R installation
+// Serve Agrafeuse locally and run its R code in your own R installation
 // instead of webR. Useful for development, automated tests, or big datasets.
 //
 //   node dev/r-bridge.mjs            (needs R with ggplot2, dplyr, tidyr, jsonlite;
@@ -18,7 +18,7 @@ import { fileURLToPath } from 'node:url';
 
 const ROOT = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const PORT = Number(process.env.PORT || 8787);
-const TOKEN = process.env.PLOTBENCH_TOKEN || randomBytes(16).toString('hex');
+const TOKEN = process.env.AGRAFEUSE_TOKEN || randomBytes(16).toString('hex');
 const RSCRIPT = process.env.R_SCRIPT || 'Rscript';
 
 const MIME = {
@@ -46,7 +46,7 @@ repeat {
 }
 `;
 
-const dir = await mkdtemp(join(tmpdir(), 'plotbench-bridge-'));
+const dir = await mkdtemp(join(tmpdir(), 'agrafeuse-bridge-'));
 await writeFile(join(dir, 'loop.R'), LOOP);
 const R = spawn(RSCRIPT, ['--vanilla', join(dir, 'loop.R')], {
   stdio: ['pipe', 'pipe', 'inherit'],
@@ -84,7 +84,7 @@ const server = http.createServer(async (req, res) => {
     const url = new URL(req.url, `http://127.0.0.1:${PORT}`);
     if (url.pathname === '/__r/eval') {
       const origin = req.headers.origin;
-      if (req.method !== 'POST' || req.headers['x-plotbench-token'] !== TOKEN
+      if (req.method !== 'POST' || req.headers['x-agrafeuse-token'] !== TOKEN
         || (origin && origin !== `http://127.0.0.1:${PORT}` && origin !== `http://localhost:${PORT}`)) {
         res.writeHead(403); res.end('Forbidden'); return;
       }
@@ -110,5 +110,5 @@ const server = http.createServer(async (req, res) => {
 });
 
 server.listen(PORT, '127.0.0.1', () => {
-  console.log(`Plotbench with native R: http://127.0.0.1:${PORT}/?engine=bridge&token=${TOKEN}`);
+  console.log(`Agrafeuse with native R: http://127.0.0.1:${PORT}/?engine=bridge&token=${TOKEN}`);
 });

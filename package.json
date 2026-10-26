@@ -1,10 +1,10 @@
 {
-  "name": "plotbench",
+  "name": "agrafeuse",
   "version": "0.1.0",
   "private": true,
-  "description": "Graphs and statistics with R and ggplot2, running in the browser with webR.",
+  "description": "Agrafeuse: a free, open-source tool for scientific graphs and statistics with R, running in the browser with webR.",
   "type": "module",
-  "license": "MIT",
+  "license": "AGPL-3.0-only",
   "scripts": {
     "serve": "python3 -m http.server 8000",
     "bridge": "node dev/r-bridge.mjs",
@@ -14,5 +14,10 @@
   },
   "devDependencies": {
     "playwright": "^1.63.0"
+  },
+  "author": "Paraish S. Misra",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/paraish/Agrafeuse.git"
   }
 }

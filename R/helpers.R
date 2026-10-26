@@ -1,9 +1,9 @@
 # =============================================================================
-# Plotbench helper functions
+# Agrafeuse helper functions
 #
-# Every script Plotbench generates starts with these helpers. They are plain R:
+# Every script Agrafeuse generates starts with these helpers. They are plain R:
 # ggplot2 is needed for the plotting helpers, and emmeans / lme4 / lmerTest
-# only for the analyses that use them. All helper names start with `pb_` so
+# only for the analyses that use them. All helper names start with `ag_` so
 # they never clash with your own objects.
 # =============================================================================
 
@@ -12,14 +12,14 @@
 # ---- Formatting --------------------------------------------------------------
 
 # P values the way most papers print them: 4 decimals, "<0.0001" below that.
-pb_fmt_p <- function(p) {
+ag_fmt_p <- function(p) {
   out <- formatC(round(p, 4), format = "f", digits = 4)
   out[!is.na(p) & p < 1e-4] <- "<0.0001"
   out[is.na(p)] <- "NA"
   out
 }
 
-pb_stars <- function(p) {
+ag_stars <- function(p) {
   out <- ifelse(p < 1e-4, "****", ifelse(p < 1e-3, "***",
          ifelse(p < 0.01, "**", ifelse(p < 0.05, "*", "ns"))))
   out[is.na(p)] <- ""
@@ -27,26 +27,26 @@ pb_stars <- function(p) {
 }
 
 # Text for a p value on a graph. format: "stars", "p" ("p = 0.012") or "number".
-pb_p_label <- function(p, format = "stars") {
+ag_p_label <- function(p, format = "stars") {
   switch(format,
-    stars = pb_stars(p),
-    p = pb_p_text(p),
-    number = pb_fmt_p(p),
-    pb_stars(p)
+    stars = ag_stars(p),
+    p = ag_p_text(p),
+    number = ag_fmt_p(p),
+    ag_stars(p)
   )
 }
 
 # "p = 0.0123" or "p < 0.0001", for sentences.
-pb_p_text <- function(p) ifelse(!is.na(p) & p < 1e-4, "p < 0.0001", paste("p =", pb_fmt_p(p)))
+ag_p_text <- function(p) ifelse(!is.na(p) & p < 1e-4, "p < 0.0001", paste("p =", ag_fmt_p(p)))
 
-pb_num <- function(x, digits = 4) {
+ag_num <- function(x, digits = 4) {
   out <- formatC(signif(x, digits), digits = digits, format = "fg", flag = "#")
   out <- sub("\\.$", "", trimws(out))
   ifelse(is.na(x), "", out)
 }
 
 # Short number for sentences and graph labels.
-pb_short <- function(x, digits = 3) {
+ag_short <- function(x, digits = 3) {
   vapply(x, function(v) {
     if (is.na(v)) return("NA")
     if (v != 0 && (abs(v) >= 1e5 || abs(v) < 1e-3)) return(formatC(v, digits = digits - 1, format = "e"))
@@ -59,50 +59,50 @@ pb_short <- function(x, digits = 3) {
 # direction = "up" or "down" draws only one half of the error bar. Each
 # function stands alone, so plots saved in an .RData file still draw in R
 # without the rest of these helpers.
-pb_mean_sd <- function(x, direction = "both") {
+ag_mean_sd <- function(x, direction = "both") {
   x <- x[!is.na(x)]
   m <- mean(x); s <- if (length(x) > 1) stats::sd(x) else 0
   data.frame(y = m, ymin = if (direction == "up") m else m - s, ymax = if (direction == "down") m else m + s)
 }
 
-pb_mean_sem <- function(x, direction = "both") {
+ag_mean_sem <- function(x, direction = "both") {
   x <- x[!is.na(x)]
   m <- mean(x); s <- if (length(x) > 1) stats::sd(x) / sqrt(length(x)) else 0
   data.frame(y = m, ymin = if (direction == "up") m else m - s, ymax = if (direction == "down") m else m + s)
 }
 
-pb_mean_ci <- function(x, direction = "both", conf = 0.95) {
+ag_mean_ci <- function(x, direction = "both", conf = 0.95) {
   x <- x[!is.na(x)]
   n <- length(x); m <- mean(x)
   s <- if (n > 1) stats::qt(1 - (1 - conf) / 2, n - 1) * stats::sd(x) / sqrt(n) else 0
   data.frame(y = m, ymin = if (direction == "up") m else m - s, ymax = if (direction == "down") m else m + s)
 }
 
-pb_median_iqr <- function(x, direction = "both") {
+ag_median_iqr <- function(x, direction = "both") {
   q <- stats::quantile(x, c(0.25, 0.5, 0.75), na.rm = TRUE, names = FALSE)
   data.frame(y = q[2], ymin = if (direction == "up") q[2] else q[1], ymax = if (direction == "down") q[2] else q[3])
 }
 
-pb_median_range <- function(x, direction = "both") {
+ag_median_range <- function(x, direction = "both") {
   x <- x[!is.na(x)]
   m <- stats::median(x)
   data.frame(y = m, ymin = if (direction == "up") m else min(x), ymax = if (direction == "down") m else max(x))
 }
 
 # Factor whose levels keep the order values first appear in (not alphabetical).
-pb_factor <- function(x) {
+ag_factor <- function(x) {
   if (is.factor(x)) return(droplevels(x))
   factor(x, levels = unique(as.character(x[!is.na(x)])))
 }
 
 # Put the given levels first, in that order; any other levels follow.
-pb_relevel <- function(x, levels) {
-  x <- pb_factor(x)
+ag_relevel <- function(x, levels) {
+  x <- ag_factor(x)
   factor(x, levels = c(intersect(levels, levels(x)), setdiff(levels(x), levels)))
 }
 
 # Swap rows and columns. `names_col` (optional) holds the new column names.
-pb_transpose <- function(df, names_col = NULL) {
+ag_transpose <- function(df, names_col = NULL) {
   df <- as.data.frame(df, check.names = FALSE)
   if (!is.null(names_col)) {
     new_names <- make.unique(as.character(df[[names_col]]))
@@ -121,7 +121,7 @@ pb_transpose <- function(df, names_col = NULL) {
 # ---- Theme --------------------------------------------------------------------
 
 # A clean "lab figure" look: no grid, thick black axes, bold titles.
-pb_theme_prism <- function(base_size = 14, base_family = "") {
+ag_theme_prism <- function(base_size = 14, base_family = "") {
   ggplot2::theme_classic(base_size = base_size, base_family = base_family) +
     ggplot2::theme(
       axis.line = ggplot2::element_line(linewidth = 0.9, colour = "black", lineend = "square"),
@@ -136,18 +136,18 @@ pb_theme_prism <- function(base_size = 14, base_family = "") {
     )
 }
 
-pb_okabe_ito <- c("#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2",
+ag_okabe_ito <- c("#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2",
                   "#D55E00", "#CC79A7", "#000000", "#999999")
 
 # ---- P value brackets ------------------------------------------------------------
 
 # Brackets with p values between groups on a discrete x axis.
-# `result` is a Plotbench result (it carries a `comparisons` table with
+# `result` is a Agrafeuse result (it carries a `comparisons` table with
 # group1, group2 and p); `data`, `x` and `y` are what the graph shows.
 # Comparisons made within each level of the x variable (e.g. treatment within
 # each dose) are drawn between side-by-side ("dodged") groups; `dodge` must
-# match the dodge width of the graph (Plotbench uses 0.8).
-pb_brackets <- function(result, data, x, y, format = "stars", hide_ns = FALSE,
+# match the dodge width of the graph (Agrafeuse uses 0.8).
+ag_brackets <- function(result, data, x, y, format = "stars", hide_ns = FALSE,
                         y_start = NULL, step = 0.09, tip = 0.02, text_size = 4.5,
                         colour = "black", linewidth = 0.6, dodge = 0.8) {
   cmp <- result$comparisons
@@ -174,7 +174,7 @@ pb_brackets <- function(result, data, x, y, format = "stars", hide_ns = FALSE,
               paste(fac, collapse = ", "), "' to draw them.", call. = FALSE)
       return(list())
     }
-    xl <- levels(pb_factor(xv)); fl <- levels(pb_factor(data[[fac]])); nf <- length(fl)
+    xl <- levels(ag_factor(xv)); fl <- levels(ag_factor(data[[fac]])); nf <- length(fl)
     off <- function(g) (match(as.character(g), fl) - (nf + 1) / 2) * dodge / nf
     base <- match(as.character(cmp[[by]]), xl)
     pos1 <- base + off(cmp$group1); pos2 <- base + off(cmp$group2)
@@ -188,7 +188,7 @@ pb_brackets <- function(result, data, x, y, format = "stars", hide_ns = FALSE,
     cell_tops <- vapply(split(yv, xv), top_of, numeric(1))
     cell_pos <- as.numeric(names(cell_tops))
   } else {
-    groups <- pb_factor(xv)
+    groups <- ag_factor(xv)
     pos1 <- match(as.character(cmp$group1), levels(groups))
     pos2 <- match(as.character(cmp$group2), levels(groups))
     cell_tops <- vapply(split(yv, groups), top_of, numeric(1))
@@ -226,7 +226,7 @@ pb_brackets <- function(result, data, x, y, format = "stars", hide_ns = FALSE,
     placed <- c(placed, k)
   }
   tipd <- tip * rng
-  labels <- pb_p_label(cmp$p, format)
+  labels <- ag_p_label(cmp$p, format)
   # Asterisks sit high in the line, so they go right on the bracket; text sits above it.
   is_star <- grepl("^\\*+$", labels)
 
@@ -243,7 +243,7 @@ pb_brackets <- function(result, data, x, y, format = "stars", hide_ns = FALSE,
 
 # A text label (e.g. "r = 0.82, p = 0.003") in a corner of the panel.
 # Positioned relative to the panel with I(), so it also works on log axes.
-pb_corner_label <- function(label, position = "top-left", size = 4.2, colour = "black") {
+ag_corner_label <- function(label, position = "top-left", size = 4.2, colour = "black") {
   if (is.null(label) || !nzchar(label)) return(list())
   left <- grepl("left", position); top <- grepl("top", position)
   ggplot2::annotate("text", x = I(if (left) 0.04 else 0.96), y = I(if (top) 0.96 else 0.04),
@@ -252,7 +252,7 @@ pb_corner_label <- function(label, position = "top-left", size = 4.2, colour = "
 }
 
 # The fitted curve of a regression result, optionally with its 95% confidence band.
-pb_fit_curve <- function(result, colour = "black", linewidth = 0.9, band = TRUE, band_alpha = 0.15) {
+ag_fit_curve <- function(result, colour = "black", linewidth = 0.9, band = TRUE, band_alpha = 0.15) {
   cv <- result$curve
   if (is.null(cv) || !nrow(cv)) return(list())
   out <- list()
@@ -269,15 +269,15 @@ pb_fit_curve <- function(result, colour = "black", linewidth = 0.9, band = TRUE,
 # Every analysis returns one of these: a title, a one-line summary, a set of
 # tables, and (where it makes sense) group comparisons, a graph label and a
 # fitted curve that graphs can draw.
-pb_result <- function(title, summary = "", tables = list(), comparisons = NULL,
+ag_result <- function(title, summary = "", tables = list(), comparisons = NULL,
                       label = NULL, curve = NULL, model = NULL, notes = character(), ...) {
   structure(list(title = title, summary = summary, tables = tables,
                  comparisons = comparisons, label = label, curve = curve,
                  model = model, notes = notes, ...),
-            class = "pb_result")
+            class = "ag_result")
 }
 
-print.pb_result <- function(x, ...) {
+print.ag_result <- function(x, ...) {
   cat(x$title, "\n", sep = "")
   if (nzchar(x$summary)) cat(x$summary, "\n", sep = "")
   for (nm in names(x$tables)) {
@@ -288,7 +288,7 @@ print.pb_result <- function(x, ...) {
   invisible(x)
 }
 
-pb_group_summary <- function(d, y, group) {
+ag_group_summary <- function(d, y, group) {
   sp <- split(d[[y]], d[[group]], drop = TRUE)
   rows <- lapply(names(sp), function(g) {
     v <- sp[[g]]; v <- v[!is.na(v)]; n <- length(v)
@@ -304,14 +304,14 @@ pb_group_summary <- function(d, y, group) {
   do.call(rbind, rows)
 }
 
-pb_descriptive <- function(d, y, group = NULL) {
+ag_descriptive <- function(d, y, group = NULL) {
   if (is.null(group)) { d$.all <- y; group <- ".all" }
-  tab <- pb_group_summary(d, y, group)
-  pb_result("Descriptive statistics", sprintf("%s summarised by %s.", y, if (group == ".all") "(all values)" else group),
+  tab <- ag_group_summary(d, y, group)
+  ag_result("Descriptive statistics", sprintf("%s summarised by %s.", y, if (group == ".all") "(all values)" else group),
             tables = list(`Descriptive statistics` = tab))
 }
 
-pb_normality <- function(d, y, group = NULL) {
+ag_normality <- function(d, y, group = NULL) {
   sp <- if (is.null(group)) list(All = d[[y]]) else split(d[[y]], d[[group]], drop = TRUE)
   tab <- do.call(rbind, lapply(names(sp), function(g) {
     v <- sp[[g]][!is.na(sp[[g]])]
@@ -322,7 +322,7 @@ pb_normality <- function(d, y, group = NULL) {
     data.frame(Group = g, N = length(v), W = unname(t$statistic), `P value` = t$p.value,
                `Normal?` = ifelse(t$p.value >= 0.05, "Yes (p >= 0.05)", "No (p < 0.05)"), check.names = FALSE)
   }))
-  pb_result("Shapiro-Wilk normality test",
+  ag_result("Shapiro-Wilk normality test",
             "A small p value suggests the values in that group are not normally distributed.",
             tables = list(`Normality test` = tab),
             notes = "With small samples normality tests have little power; with very large samples they flag trivial deviations. Look at the data too.")
@@ -330,7 +330,7 @@ pb_normality <- function(d, y, group = NULL) {
 
 # Two-group tests (t tests, Mann-Whitney, Wilcoxon) -------------------------------
 
-pb_result_two_group <- function(test, d, y, group, groups, title, paired = FALSE, ratio = FALSE) {
+ag_result_two_group <- function(test, d, y, group, groups, title, paired = FALSE, ratio = FALSE) {
   st <- unname(test$statistic); df <- unname(test$parameter %||% NA)
   p <- test$p.value
   est <- test$estimate; ci <- test$conf.int
@@ -340,36 +340,36 @@ pb_result_two_group <- function(test, d, y, group, groups, title, paired = FALSE
   if (ratio) { est <- exp(est); if (!is.null(ci)) ci <- exp(ci) }
   stat_name <- names(test$statistic) %||% "statistic"
   main <- data.frame(Test = title, Statistic = stat_name, Value = st,
-                     DF = df, `P value` = p, Significance = pb_stars(p), check.names = FALSE)
+                     DF = df, `P value` = p, Significance = ag_stars(p), check.names = FALSE)
   main[[diff_name]] <- est
   if (!is.null(ci)) {
     main[["Lower 95% CI"]] <- ci[1]; main[["Upper 95% CI"]] <- ci[2]
   }
   if (all(is.na(main$DF))) main$DF <- NULL
-  df_txt <- if (!is.na(df)) sprintf("(%s)", pb_short(df)) else ""
+  df_txt <- if (!is.na(df)) sprintf("(%s)", ag_short(df)) else ""
   summary <- sprintf("%s: %s%s = %s, %s (%s). %s %s vs %s = %s.",
-                     title, stat_name, df_txt, pb_short(st), pb_p_text(p), pb_stars(p),
-                     diff_name, groups[1], groups[2], pb_short(est))
-  pb_result(title, summary,
-            tables = list(Test = main, `Group summary` = pb_group_summary(d, y, group)),
+                     title, stat_name, df_txt, ag_short(st), ag_p_text(p), ag_stars(p),
+                     diff_name, groups[1], groups[2], ag_short(est))
+  ag_result(title, summary,
+            tables = list(Test = main, `Group summary` = ag_group_summary(d, y, group)),
             comparisons = data.frame(group1 = groups[1], group2 = groups[2], p = p),
-            label = paste0(title, ", ", pb_p_label(p, "p")),
+            label = paste0(title, ", ", ag_p_label(p, "p")),
             model = test)
 }
 
-pb_result_one_sample <- function(test, d, y, mu, title) {
+ag_result_one_sample <- function(test, d, y, mu, title) {
   p <- test$p.value; st <- unname(test$statistic)
   main <- data.frame(Test = title, `Hypothetical value` = mu, Statistic = names(test$statistic),
                      Value = st, DF = unname(test$parameter %||% NA), `P value` = p,
-                     Significance = pb_stars(p), check.names = FALSE)
+                     Significance = ag_stars(p), check.names = FALSE)
   if (!is.null(test$conf.int)) {
     main[["Estimate"]] <- unname(test$estimate)
     main[["Lower 95% CI"]] <- test$conf.int[1]; main[["Upper 95% CI"]] <- test$conf.int[2]
   }
   if (all(is.na(main$DF))) main$DF <- NULL
-  pb_result(title, sprintf("%s against %s: %s (%s).", title, pb_short(mu), pb_p_text(p), pb_stars(p)),
+  ag_result(title, sprintf("%s against %s: %s (%s).", title, ag_short(mu), ag_p_text(p), ag_stars(p)),
             tables = list(Test = main),
-            label = paste0(title, ", ", pb_p_label(p, "p")), model = test)
+            label = paste0(title, ", ", ag_p_label(p, "p")), model = test)
 }
 
 # Multiple comparisons ---------------------------------------------------------------
@@ -377,7 +377,7 @@ pb_result_one_sample <- function(test, d, y, mu, title) {
 # Turn an emmeans contrast object into a tidy comparison table. The groups each
 # contrast compares are read from the contrast coefficients, so level names
 # containing spaces or dashes are handled correctly.
-pb_emm_comparisons <- function(mc) {
+ag_emm_comparisons <- function(mc) {
   s <- as.data.frame(summary(mc, infer = c(TRUE, TRUE)))
   cf <- stats::coef(mc)
   by_vars <- mc@misc$by.vars %||% character()
@@ -398,7 +398,7 @@ pb_emm_comparisons <- function(mc) {
   out
 }
 
-pb_comparison_table <- function(cmp, estimate_name = "Mean difference") {
+ag_comparison_table <- function(cmp, estimate_name = "Mean difference") {
   if (is.null(cmp) || !nrow(cmp)) return(NULL)
   by <- setdiff(names(cmp), c("group1", "group2", "estimate", "lower", "upper", "p", "p_raw", "statistic"))
   tab <- data.frame(Comparison = paste(cmp$group1, "vs", cmp$group2), check.names = FALSE)
@@ -410,12 +410,12 @@ pb_comparison_table <- function(cmp, estimate_name = "Mean difference") {
   if ("statistic" %in% names(cmp)) tab[["Statistic"]] <- cmp$statistic
   if ("p_raw" %in% names(cmp)) tab[["Unadjusted P value"]] <- cmp$p_raw
   tab[["Adjusted P value"]] <- cmp$p
-  tab[["Significance"]] <- pb_stars(cmp$p)
+  tab[["Significance"]] <- ag_stars(cmp$p)
   tab
 }
 
 # Games-Howell test: pairwise comparisons that do not assume equal SDs.
-pb_games_howell <- function(y, g, conf = 0.95) {
+ag_games_howell <- function(y, g, conf = 0.95) {
   ok <- !is.na(y) & !is.na(g)
   y <- y[ok]; g <- droplevels(factor(g[ok]))
   lev <- levels(g); k <- length(lev)
@@ -437,7 +437,7 @@ pb_games_howell <- function(y, g, conf = 0.95) {
 
 # Dunn's test after Kruskal-Wallis (rank-based pairwise comparisons, with a
 # correction for ties).
-pb_dunn <- function(y, g, adjust = "bonferroni", control = NULL) {
+ag_dunn <- function(y, g, adjust = "bonferroni", control = NULL) {
   ok <- !is.na(y) & !is.na(g)
   y <- y[ok]; g <- droplevels(factor(g[ok]))
   lev <- levels(g); N <- length(y)
@@ -460,7 +460,7 @@ pb_dunn <- function(y, g, adjust = "bonferroni", control = NULL) {
 }
 
 # Paired Wilcoxon signed-rank tests between every pair of groups (after Friedman).
-pb_pairwise_wilcox_paired <- function(d, y, group, subject, adjust = "holm") {
+ag_pairwise_wilcox_paired <- function(d, y, group, subject, adjust = "holm") {
   d <- as.data.frame(d)[, c(subject, group, y)]
   d[[group]] <- as.character(d[[group]])
   w <- stats::reshape(d, idvar = subject, timevar = group, direction = "wide")
@@ -478,7 +478,7 @@ pb_pairwise_wilcox_paired <- function(d, y, group, subject, adjust = "holm") {
 
 # ANOVA-type results ---------------------------------------------------------------------
 
-pb_anova_table <- function(tab) {
+ag_anova_table <- function(tab) {
   tab <- as.data.frame(tab)
   out <- data.frame(Source = trimws(rownames(tab)), check.names = FALSE)
   pick <- function(pattern) { nm <- grep(pattern, names(tab), value = TRUE, ignore.case = TRUE); if (length(nm)) tab[[nm[1]]] else NULL }
@@ -487,48 +487,48 @@ pb_anova_table <- function(tab) {
                F = pick("F value|^F$|^F-value$"), `P value` = pick("Pr\\(>F\\)|^Pr|^p-value$"))
   for (nm in names(cols)) if (!is.null(cols[[nm]])) out[[nm]] <- cols[[nm]]
   out <- out[!out$Source %in% c("<none>", "(Intercept)"), , drop = FALSE]
-  if ("P value" %in% names(out)) out$Significance <- pb_stars(out[["P value"]])
+  if ("P value" %in% names(out)) out$Significance <- ag_stars(out[["P value"]])
   rownames(out) <- NULL
   out
 }
 
-pb_result_anova <- function(fit, mc, d, y, group, title, posthoc = NULL, extra_tables = list(), notes = character()) {
+ag_result_anova <- function(fit, mc, d, y, group, title, posthoc = NULL, extra_tables = list(), notes = character()) {
   if (inherits(fit, "aov") || inherits(fit, "lm")) {
-    at <- pb_anova_table(summary(fit)[[1]])
+    at <- ag_anova_table(summary(fit)[[1]])
     r2 <- summary.lm(fit)$r.squared
   } else {
-    at <- pb_anova_table(stats::anova(fit)); r2 <- NA
+    at <- ag_anova_table(stats::anova(fit)); r2 <- NA
   }
   eff <- at[1, , drop = FALSE]
-  summary_txt <- sprintf("%s: F(%s, %s) = %s, %s (%s).", title, pb_short(eff$DF),
-                         pb_short(if ("Denominator DF" %in% names(at)) eff[["Denominator DF"]] else at$DF[nrow(at)]),
-                         pb_short(eff$F), pb_p_text(eff[["P value"]]), pb_stars(eff[["P value"]]))
-  if (!is.na(r2)) summary_txt <- paste0(summary_txt, sprintf(" R squared = %s.", pb_short(r2)))
-  cmp <- if (is.null(mc)) NULL else if (is.data.frame(mc)) mc else pb_emm_comparisons(mc)
+  summary_txt <- sprintf("%s: F(%s, %s) = %s, %s (%s).", title, ag_short(eff$DF),
+                         ag_short(if ("Denominator DF" %in% names(at)) eff[["Denominator DF"]] else at$DF[nrow(at)]),
+                         ag_short(eff$F), ag_p_text(eff[["P value"]]), ag_stars(eff[["P value"]]))
+  if (!is.na(r2)) summary_txt <- paste0(summary_txt, sprintf(" R squared = %s.", ag_short(r2)))
+  cmp <- if (is.null(mc)) NULL else if (is.data.frame(mc)) mc else ag_emm_comparisons(mc)
   tables <- c(list(ANOVA = at), extra_tables)
-  if (!is.null(cmp)) tables[[posthoc %||% "Multiple comparisons"]] <- pb_comparison_table(cmp)
-  tables[["Group summary"]] <- pb_group_summary(d, y, group)
-  pb_result(title, summary_txt, tables = tables, comparisons = cmp,
-            label = paste0(title, ", ", pb_p_label(eff[["P value"]], "p")), model = fit, notes = notes)
+  if (!is.null(cmp)) tables[[posthoc %||% "Multiple comparisons"]] <- ag_comparison_table(cmp)
+  tables[["Group summary"]] <- ag_group_summary(d, y, group)
+  ag_result(title, summary_txt, tables = tables, comparisons = cmp,
+            label = paste0(title, ", ", ag_p_label(eff[["P value"]], "p")), model = fit, notes = notes)
 }
 
-pb_result_htest_groups <- function(test, cmp, d, y, group, title, posthoc = NULL, notes = character(),
+ag_result_htest_groups <- function(test, cmp, d, y, group, title, posthoc = NULL, notes = character(),
                                    estimate_name = "Mean difference") {
   p <- test$p.value
   main <- data.frame(Test = title, Statistic = names(test$statistic) %||% "", Value = unname(test$statistic),
-                     DF = paste(pb_short(test$parameter), collapse = ", "), `P value` = p,
-                     Significance = pb_stars(p), check.names = FALSE)
+                     DF = paste(ag_short(test$parameter), collapse = ", "), `P value` = p,
+                     Significance = ag_stars(p), check.names = FALSE)
   tables <- list(Test = main)
-  if (!is.null(cmp)) tables[[posthoc %||% "Multiple comparisons"]] <- pb_comparison_table(cmp, estimate_name)
-  tables[["Group summary"]] <- pb_group_summary(d, y, group)
-  pb_result(title, sprintf("%s: %s = %s, %s (%s).", title, names(test$statistic) %||% "statistic",
-                           pb_short(unname(test$statistic)), pb_p_text(p), pb_stars(p)),
-            tables = tables, comparisons = cmp, label = paste0(title, ", ", pb_p_label(p, "p")),
+  if (!is.null(cmp)) tables[[posthoc %||% "Multiple comparisons"]] <- ag_comparison_table(cmp, estimate_name)
+  tables[["Group summary"]] <- ag_group_summary(d, y, group)
+  ag_result(title, sprintf("%s: %s = %s, %s (%s).", title, names(test$statistic) %||% "statistic",
+                           ag_short(unname(test$statistic)), ag_p_text(p), ag_stars(p)),
+            tables = tables, comparisons = cmp, label = paste0(title, ", ", ag_p_label(p, "p")),
             model = test, notes = notes)
 }
 
 # Two-way ANOVA with Type I (sequential) or Type III sums of squares.
-pb_anova2_table <- function(fit, type = "III") {
+ag_anova2_table <- function(fit, type = "III") {
   if (type == "III") {
     tab <- stats::drop1(fit, scope = stats::formula(fit)[-2], test = "F")
     tab <- tab[rownames(tab) != "<none>", , drop = FALSE]
@@ -538,38 +538,38 @@ pb_anova2_table <- function(fit, type = "III") {
                       check.names = FALSE)
     out <- rbind(out, data.frame(Source = "Residuals", DF = rdf, `Sum of squares` = rss,
                                  `Mean square` = rss / rdf, F = NA, `P value` = NA, check.names = FALSE))
-    out$Significance <- pb_stars(out[["P value"]])
+    out$Significance <- ag_stars(out[["P value"]])
     rownames(out) <- NULL
     out
   } else {
-    pb_anova_table(stats::anova(fit))
+    ag_anova_table(stats::anova(fit))
   }
 }
 
-pb_result_anova2 <- function(fit, mc, d, y, factors, type = "III", title = "Two-way ANOVA", posthoc = NULL) {
-  at <- pb_anova2_table(fit, type)
+ag_result_anova2 <- function(fit, mc, d, y, factors, type = "III", title = "Two-way ANOVA", posthoc = NULL) {
+  at <- ag_anova2_table(fit, type)
   terms <- at[at$Source != "Residuals", , drop = FALSE]
-  summary_txt <- paste(sprintf("%s: F(%s, %s) = %s, %s (%s)", terms$Source, pb_short(terms$DF),
-                               pb_short(stats::df.residual(fit)), pb_short(terms$F),
-                               pb_p_text(terms[["P value"]]), pb_stars(terms[["P value"]])), collapse = "; ")
-  cmp <- if (is.null(mc)) NULL else pb_emm_comparisons(mc)
+  summary_txt <- paste(sprintf("%s: F(%s, %s) = %s, %s (%s)", terms$Source, ag_short(terms$DF),
+                               ag_short(stats::df.residual(fit)), ag_short(terms$F),
+                               ag_p_text(terms[["P value"]]), ag_stars(terms[["P value"]])), collapse = "; ")
+  cmp <- if (is.null(mc)) NULL else ag_emm_comparisons(mc)
   tables <- list(`ANOVA table` = at)
-  if (!is.null(cmp)) tables[[posthoc %||% "Multiple comparisons"]] <- pb_comparison_table(cmp)
+  if (!is.null(cmp)) tables[[posthoc %||% "Multiple comparisons"]] <- ag_comparison_table(cmp)
   cell <- interaction(d[factors], sep = " : ", drop = TRUE, lex.order = TRUE)
   d$.cell <- cell
-  tables[["Cell summary"]] <- pb_group_summary(d, y, ".cell")
-  pb_result(paste0(title, " (Type ", type, " sums of squares)"), paste0(summary_txt, "."),
+  tables[["Cell summary"]] <- ag_group_summary(d, y, ".cell")
+  ag_result(paste0(title, " (Type ", type, " sums of squares)"), paste0(summary_txt, "."),
             tables = tables, comparisons = cmp, model = fit,
-            label = paste(sprintf("%s: %s", terms$Source, pb_p_label(terms[["P value"]], "p")), collapse = "\n"))
+            label = paste(sprintf("%s: %s", terms$Source, ag_p_label(terms[["P value"]], "p")), collapse = "\n"))
 }
 
 # Mixed-effects models (lme4 + lmerTest) ---------------------------------------------------
 
-pb_result_mixed <- function(fit, mc, d, y, group = NULL, title = "Mixed-effects model", posthoc = NULL) {
+ag_result_mixed <- function(fit, mc, d, y, group = NULL, title = "Mixed-effects model", posthoc = NULL) {
   notes <- character()
   if (inherits(fit, "lme")) {
     # nlme::lme (used when lme4 is not available)
-    at <- pb_anova_table(stats::anova(fit, type = "marginal"))
+    at <- ag_anova_table(stats::anova(fit, type = "marginal"))
     vc <- nlme::VarCorr(fit)
     num <- suppressWarnings(as.numeric(vc[, "Variance"]))
     grp <- ""
@@ -586,7 +586,7 @@ pb_result_mixed <- function(fit, mc, d, y, group = NULL, title = "Mixed-effects 
                      t = tt$`t-value`, `P value` = tt$`p-value`, check.names = FALSE)
     fx_title <- "Fixed effects (marginal F tests, nlme)"
   } else {
-    at <- pb_anova_table(stats::anova(fit))
+    at <- ag_anova_table(stats::anova(fit))
     vc <- as.data.frame(lme4::VarCorr(fit))
     re <- data.frame(Group = vc$grp, Term = ifelse(is.na(vc$var2), vc$var1, paste(vc$var1, vc$var2, sep = " x ")),
                      Variance = vc$vcov, SD = vc$sdcor, check.names = FALSE)
@@ -597,39 +597,39 @@ pb_result_mixed <- function(fit, mc, d, y, group = NULL, title = "Mixed-effects 
     fx_title <- "Fixed effects (Type III, Satterthwaite)"
     if (lme4::isSingular(fit)) notes <- c(notes, "The fit is singular: a random effect is estimated as (close to) zero. The model may be more complex than the data support.")
   }
-  summary_txt <- if (nrow(at)) paste(sprintf("%s: F(%s, %s) = %s, %s (%s)", at$Source, pb_short(at$DF),
-    pb_short(at[["Denominator DF"]]), pb_short(at$F), pb_p_text(at[["P value"]]), pb_stars(at[["P value"]])), collapse = "; ") else ""
-  cmp <- if (is.null(mc)) NULL else pb_emm_comparisons(mc)
+  summary_txt <- if (nrow(at)) paste(sprintf("%s: F(%s, %s) = %s, %s (%s)", at$Source, ag_short(at$DF),
+    ag_short(at[["Denominator DF"]]), ag_short(at$F), ag_p_text(at[["P value"]]), ag_stars(at[["P value"]])), collapse = "; ") else ""
+  cmp <- if (is.null(mc)) NULL else ag_emm_comparisons(mc)
   tables <- list()
   tables[[fx_title]] <- at
-  if (!is.null(cmp)) tables[[posthoc %||% "Multiple comparisons"]] <- pb_comparison_table(cmp)
+  if (!is.null(cmp)) tables[[posthoc %||% "Multiple comparisons"]] <- ag_comparison_table(cmp)
   tables[["Random effects"]] <- re
   tables[["Coefficients"]] <- fe
-  if (!is.null(group)) tables[["Group summary"]] <- pb_group_summary(d, y, group)
-  pb_result(title, paste0(summary_txt, "."), tables = tables, comparisons = cmp, model = fit,
-            label = if (nrow(at)) paste(sprintf("%s: %s", at$Source, pb_p_label(at[["P value"]], "p")), collapse = "\n") else NULL,
+  if (!is.null(group)) tables[["Group summary"]] <- ag_group_summary(d, y, group)
+  ag_result(title, paste0(summary_txt, "."), tables = tables, comparisons = cmp, model = fit,
+            label = if (nrow(at)) paste(sprintf("%s: %s", at$Source, ag_p_label(at[["P value"]], "p")), collapse = "\n") else NULL,
             notes = notes)
 }
 
 # Correlation ---------------------------------------------------------------------
 
-pb_result_cor <- function(test, d, x, y, method) {
+ag_result_cor <- function(test, d, x, y, method) {
   sym <- switch(method, pearson = "r", spearman = "rho", kendall = "tau")
   est <- unname(test$estimate); p <- test$p.value
   main <- data.frame(Method = test$method, Coefficient = sym, Value = est, N = nrow(d),
-                     `P value` = p, Significance = pb_stars(p), check.names = FALSE)
+                     `P value` = p, Significance = ag_stars(p), check.names = FALSE)
   if (!is.null(test$conf.int)) { main[["Lower 95% CI"]] <- test$conf.int[1]; main[["Upper 95% CI"]] <- test$conf.int[2] }
   if (method == "pearson") main[["R squared"]] <- est^2
-  pb_result(test$method,
+  ag_result(test$method,
             sprintf("%s between %s and %s: %s = %s, %s (%s), n = %d.", test$method, x, y, sym,
-                    pb_short(est), pb_p_text(p), pb_stars(p), nrow(d)),
+                    ag_short(est), ag_p_text(p), ag_stars(p), nrow(d)),
             tables = list(Correlation = main),
-            label = sprintf("%s = %s, %s", sym, pb_short(est), pb_p_label(p, "p")), model = test)
+            label = sprintf("%s = %s, %s", sym, ag_short(est), ag_p_label(p, "p")), model = test)
 }
 
 # Regression ------------------------------------------------------------------------
 
-pb_curve_grid <- function(xs, log_spaced = FALSE, n = 200) {
+ag_curve_grid <- function(xs, log_spaced = FALSE, n = 200) {
   xs <- xs[is.finite(xs)]
   if (log_spaced) {
     xs <- xs[xs > 0]
@@ -638,7 +638,7 @@ pb_curve_grid <- function(xs, log_spaced = FALSE, n = 200) {
   seq(min(xs), max(xs), length.out = n)
 }
 
-pb_result_lm <- function(fit, d, x, y, model = "linear") {
+ag_result_lm <- function(fit, d, x, y, model = "linear") {
   s <- summary(fit)
   cf <- as.data.frame(s$coefficients)
   ci <- suppressMessages(stats::confint(fit))
@@ -647,10 +647,10 @@ pb_result_lm <- function(fit, d, x, y, model = "linear") {
                       `P value` = cf$`Pr(>|t|)`, check.names = FALSE)
   b <- stats::coef(fit)
   eq <- switch(model,
-    linear = sprintf("y = %s x %s %s", pb_short(b[2]), if (b[1] < 0) "-" else "+", pb_short(abs(b[1]))),
-    origin = sprintf("y = %s x", pb_short(b[1])),
-    log = sprintf("y = %s + %s ln(x)", pb_short(b[1]), pb_short(b[2])),
-    poly2 = , poly3 = paste0("y = ", paste(sprintf("%s%s", pb_short(b), c("", " x", " x^2", " x^3")[seq_along(b)]), collapse = " + ")),
+    linear = sprintf("y = %s x %s %s", ag_short(b[2]), if (b[1] < 0) "-" else "+", ag_short(abs(b[1]))),
+    origin = sprintf("y = %s x", ag_short(b[1])),
+    log = sprintf("y = %s + %s ln(x)", ag_short(b[1]), ag_short(b[2])),
+    poly2 = , poly3 = paste0("y = ", paste(sprintf("%s%s", ag_short(b), c("", " x", " x^2", " x^3")[seq_along(b)]), collapse = " + ")),
     "")
   eq <- gsub("+ -", "- ", eq, fixed = TRUE)
   f <- s$fstatistic
@@ -659,17 +659,17 @@ pb_result_lm <- function(fit, d, x, y, model = "linear") {
                           F = if (!is.null(f)) unname(f[1]) else NA,
                           `P value` = if (!is.null(f)) stats::pf(f[1], f[2], f[3], lower.tail = FALSE) else NA,
                           AIC = stats::AIC(fit), check.names = FALSE)
-  grid <- data.frame(pb_curve_grid(d[[x]], log_spaced = model == "log")); names(grid) <- x
+  grid <- data.frame(ag_curve_grid(d[[x]], log_spaced = model == "log")); names(grid) <- x
   pr <- stats::predict(fit, newdata = grid, interval = "confidence")
   curve <- data.frame(x = grid[[x]], y = pr[, "fit"], lwr = pr[, "lwr"], upr = pr[, "upr"])
-  pb_result(paste("Regression:", y, "vs", x),
-            sprintf("%s. R squared = %s, n = %d.", eq, pb_short(s$r.squared), stats::nobs(fit)),
+  ag_result(paste("Regression:", y, "vs", x),
+            sprintf("%s. R squared = %s, n = %d.", eq, ag_short(s$r.squared), stats::nobs(fit)),
             tables = list(Coefficients = coefs, `Goodness of fit` = fit_stats),
-            label = sprintf("%s\nR² = %s", eq, pb_short(s$r.squared, 3)),
+            label = sprintf("%s\nR² = %s", eq, ag_short(s$r.squared, 3)),
             curve = curve, model = fit)
 }
 
-pb_result_nls <- function(fit, d, x, y, model) {
+ag_result_nls <- function(fit, d, x, y, model) {
   s <- summary(fit)
   cf <- as.data.frame(s$coefficients)
   ci <- tryCatch(suppressMessages(stats::confint.default(fit)), error = function(e) matrix(NA, nrow(cf), 2))
@@ -683,40 +683,40 @@ pb_result_nls <- function(fit, d, x, y, model) {
     hill <- 1 / (b[["scal"]] * log(10))
     derived <- data.frame(Parameter = c("Bottom", "Top", "LogEC50", "EC50", "Hill slope"),
                           Estimate = c(b[["bottom"]], b[["top"]], b[["logEC50"]], 10^b[["logEC50"]], hill))
-    label <- sprintf("EC50 = %s\nHill slope = %s", pb_short(10^b[["logEC50"]]), pb_short(hill))
+    label <- sprintf("EC50 = %s\nHill slope = %s", ag_short(10^b[["logEC50"]]), ag_short(hill))
   } else if (model == "mm") {
-    label <- sprintf("Vmax = %s\nKm = %s", pb_short(b[["Vmax"]]), pb_short(b[["Km"]]))
+    label <- sprintf("Vmax = %s\nKm = %s", ag_short(b[["Vmax"]]), ag_short(b[["Km"]]))
   } else if (model == "exp") {
-    label <- sprintf("y = %s e^(%s x)", pb_short(b[["a"]]), pb_short(b[["b"]]))
+    label <- sprintf("y = %s e^(%s x)", ag_short(b[["a"]]), ag_short(b[["b"]]))
   } else if (model == "power") {
-    label <- sprintf("y = %s x^%s", pb_short(b[["a"]]), pb_short(b[["b"]]))
+    label <- sprintf("y = %s x^%s", ag_short(b[["a"]]), ag_short(b[["b"]]))
   } else if (model == "decay") {
     k <- exp(b[["log_k"]])
     derived <- data.frame(Parameter = c("Plateau", "Y0", "K", "Half-life"),
                           Estimate = c(b[["plateau"]], b[["y0"]], k, log(2) / k))
-    label <- sprintf("K = %s\nHalf-life = %s", pb_short(k), pb_short(log(2) / k))
+    label <- sprintf("K = %s\nHalf-life = %s", ag_short(k), ag_short(log(2) / k))
   }
   res <- stats::residuals(fit); yy <- d[[y]]
   r2 <- 1 - sum(res^2) / sum((yy - mean(yy))^2)
   fit_stats <- data.frame(`R squared` = r2, `Residual SD` = s$sigma, N = length(res),
                           AIC = stats::AIC(fit), check.names = FALSE)
-  grid <- data.frame(pb_curve_grid(d[[x]], log_spaced = model %in% c("4pl", "power"))); names(grid) <- x
+  grid <- data.frame(ag_curve_grid(d[[x]], log_spaced = model %in% c("4pl", "power"))); names(grid) <- x
   curve <- data.frame(x = grid[[x]], y = stats::predict(fit, newdata = grid))
   tables <- list(`Best-fit values` = coefs)
   if (!is.null(derived)) tables[["Derived values"]] <- derived
   tables[["Goodness of fit"]] <- fit_stats
-  pb_result(paste("Nonlinear regression:", y, "vs", x),
-            sprintf("%s. R squared = %s, n = %d.", gsub("\n", ", ", label), pb_short(r2), length(res)),
-            tables = tables, label = sprintf("%s\nR² = %s", label, pb_short(r2, 3)),
+  ag_result(paste("Nonlinear regression:", y, "vs", x),
+            sprintf("%s. R squared = %s, n = %d.", gsub("\n", ", ", label), ag_short(r2), length(res)),
+            tables = tables, label = sprintf("%s\nR² = %s", label, ag_short(r2, 3)),
             curve = curve, model = fit)
 }
 
 # ---- Talking to the app (JSON in / out) -------------------------------------------------
 
-pb_json <- function(x) jsonlite::toJSON(x, auto_unbox = TRUE, null = "null", na = "null", digits = NA)
+ag_json <- function(x) jsonlite::toJSON(x, auto_unbox = TRUE, null = "null", na = "null", digits = NA)
 
 # Evaluate code in the global environment and report errors and warnings as JSON.
-pb_eval_json <- function(code) {
+ag_eval_json <- function(code) {
   warns <- character(); msgs <- character()
   value <- NULL
   err <- tryCatch({
@@ -732,70 +732,70 @@ pb_eval_json <- function(code) {
   }, error = function(e) {
     msg <- conditionMessage(e)
     call <- conditionCall(e)
-    if (!is.null(call) && !grepl("^pb_|eval", deparse(call)[1])) msg <- paste0(msg, "  [in ", deparse(call, nlines = 1)[1], "]")
+    if (!is.null(call) && !grepl("^ag_|eval", deparse(call)[1])) msg <- paste0(msg, "  [in ", deparse(call, nlines = 1)[1], "]")
     msg
   })
   out <- list(ok = is.null(err), error = err, warnings = I(unique(warns)), messages = I(unique(msgs)))
   if (is.null(err) && is.character(value) && length(value) == 1) out$value <- value
-  pb_json(out)
+  ag_json(out)
 }
 
-pb_col_type <- function(v) {
+ag_col_type <- function(v) {
   if (is.factor(v)) "factor" else if (is.logical(v)) "logical" else if (is.numeric(v)) "numeric" else
     if (inherits(v, c("Date", "POSIXt"))) "date" else "character"
 }
 
 # Column names, types and levels of a data frame, for the app's dropdowns.
-pb_describe <- function(df) {
+ag_describe <- function(df) {
   if (!is.data.frame(df)) stop("not a data frame")
   cols <- lapply(names(df), function(nm) {
-    v <- df[[nm]]; type <- pb_col_type(v)
+    v <- df[[nm]]; type <- ag_col_type(v)
     lev <- if (type == "factor") levels(v) else if (type %in% c("character", "logical")) {
       u <- unique(as.character(v[!is.na(v)])); if (length(u) <= 500) u else NULL } else NULL
     if (type == "numeric") { u <- unique(v[!is.na(v)]); if (length(u) <= 30) lev <- as.character(sort(u)) }
     list(name = nm, type = type, levels = I(lev %||% character()), missing = sum(is.na(v)))
   })
-  pb_json(list(nrow = nrow(df), columns = cols))
+  ag_json(list(nrow = nrow(df), columns = cols))
 }
 
-pb_cell_text <- function(v) {
+ag_cell_text <- function(v) {
   if (is.numeric(v)) out <- as.character(signif(v, 6)) else out <- as.character(v)
   out[is.na(v)] <- ""
   out
 }
 
 # First rows of a data frame as text, for previews and for importing into the grid.
-pb_table_json <- function(df, n = Inf) {
+ag_table_json <- function(df, n = Inf) {
   df <- as.data.frame(df, check.names = FALSE, stringsAsFactors = FALSE)
   if (is.finite(n)) df <- utils::head(df, n)
-  cols <- lapply(names(df), function(nm) list(name = nm, type = pb_col_type(df[[nm]]),
+  cols <- lapply(names(df), function(nm) list(name = nm, type = ag_col_type(df[[nm]]),
     levels = if (is.factor(df[[nm]])) I(levels(df[[nm]])) else I(character())))
   rows <- if (nrow(df)) do.call(mapply, c(list(FUN = function(...) I(c(...)), SIMPLIFY = FALSE, USE.NAMES = FALSE),
-                                         lapply(df, pb_cell_text))) else list()
-  pb_json(list(columns = cols, rows = rows))
+                                         lapply(df, ag_cell_text))) else list()
+  ag_json(list(columns = cols, rows = rows))
 }
 
-pb_preview <- function(df, n = 200) {
-  out <- jsonlite::fromJSON(pb_table_json(df, n), simplifyVector = FALSE)
+ag_preview <- function(df, n = 200) {
+  out <- jsonlite::fromJSON(ag_table_json(df, n), simplifyVector = FALSE)
   out$nrow <- nrow(df)
-  pb_json(out)
+  ag_json(out)
 }
 
 # An analysis result as JSON, with numbers formatted for display.
-pb_result_json <- function(res) {
+ag_result_json <- function(res) {
   fmt_table <- function(tab) {
     tab <- as.data.frame(tab, check.names = FALSE, stringsAsFactors = FALSE)
     cols <- names(tab)
     vals <- lapply(cols, function(nm) {
       v <- tab[[nm]]
-      if (is.numeric(v) && grepl("p value", nm, ignore.case = TRUE)) ifelse(is.na(v), "", pb_fmt_p(v))
-      else if (is.numeric(v)) ifelse(is.na(v), "", ifelse(abs(v - round(v)) < 1e-9 & abs(v) < 1e7, format(round(v), trim = TRUE, scientific = FALSE), pb_num(v)))
+      if (is.numeric(v) && grepl("p value", nm, ignore.case = TRUE)) ifelse(is.na(v), "", ag_fmt_p(v))
+      else if (is.numeric(v)) ifelse(is.na(v), "", ifelse(abs(v - round(v)) < 1e-9 & abs(v) < 1e7, format(round(v), trim = TRUE, scientific = FALSE), ag_num(v)))
       else ifelse(is.na(v), "", as.character(v))
     })
     rows <- if (nrow(tab)) lapply(seq_len(nrow(tab)), function(i) I(vapply(vals, `[`, character(1), i))) else list()
     list(columns = I(cols), rows = rows)
   }
-  pb_json(list(title = res$title, summary = res$summary, notes = I(res$notes %||% character()),
+  ag_json(list(title = res$title, summary = res$summary, notes = I(res$notes %||% character()),
                tables = lapply(names(res$tables), function(nm) c(list(name = nm), fmt_table(res$tables[[nm]]))),
                has_comparisons = !is.null(res$comparisons) && nrow(res$comparisons) > 0,
                has_curve = !is.null(res$curve), label = res$label))
@@ -803,7 +803,7 @@ pb_result_json <- function(res) {
 
 # ---- Drawing and saving plots ----------------------------------------------------------
 
-pb_open_device <- function(file, format, width, height, dpi = 300) {
+ag_open_device <- function(file, format, width, height, dpi = 300) {
   cairo <- isTRUE(capabilities("cairo"))
   switch(format,
     svg = grDevices::svg(file, width = width, height = height),
@@ -817,12 +817,12 @@ pb_open_device <- function(file, format, width, height, dpi = 300) {
 
 # Draw a plot to a file. Returns JSON with any error and warnings, and the SVG
 # text itself when format = "svg" and inline = TRUE (used for the live preview).
-pb_draw <- function(plot, file, format = "svg", width = 5, height = 4, dpi = 300, inline = FALSE) {
+ag_draw <- function(plot, file, format = "svg", width = 5, height = 4, dpi = 300, inline = FALSE) {
   warns <- character()
   dev <- NULL
   err <- tryCatch({
     withCallingHandlers({
-      pb_open_device(file, format, width, height, dpi)
+      ag_open_device(file, format, width, height, dpi)
       dev <- grDevices::dev.cur()
       print(plot)
       NULL
@@ -833,40 +833,40 @@ pb_draw <- function(plot, file, format = "svg", width = 5, height = 4, dpi = 300
   finally = if (!is.null(dev)) try(grDevices::dev.off(dev), silent = TRUE))
   out <- list(ok = is.null(err), error = err, warnings = I(unique(warns)))
   if (is.null(err) && inline) out$svg <- paste(readLines(file, warn = FALSE, encoding = "UTF-8"), collapse = "\n")
-  pb_json(out)
+  ag_json(out)
 }
 
 # ---- Project files (.RData) -----------------------------------------------------------------
 
 # Save the named objects plus the app's project description into one .RData file.
-pb_save_rdata <- function(file, objects, project_json) {
+ag_save_rdata <- function(file, objects, project_json) {
   env <- new.env()
   for (o in objects) if (exists(o, envir = globalenv(), inherits = FALSE)) assign(o, get(o, envir = globalenv()), envir = env)
-  assign(".plotbench_project", project_json, envir = env)
+  assign(".agrafeuse_project", project_json, envir = env)
   # So analysis results print as readable tables in R too.
-  assign("print.pb_result", print.pb_result, envir = env)
+  assign("print.ag_result", print.ag_result, envir = env)
   save(list = ls(env, all.names = TRUE), envir = env, file = file)
   invisible(file)
 }
 
-# Read an .RData file. Returns the saved Plotbench project (if any) and every
+# Read an .RData file. Returns the saved Agrafeuse project (if any) and every
 # data frame in the file, so plain .RData files from R can be opened too.
-pb_load_rdata <- function(file) {
+ag_load_rdata <- function(file) {
   env <- new.env()
   load(file, envir = env)
   nms <- ls(env, all.names = TRUE)
-  project <- if (exists(".plotbench_project", envir = env, inherits = FALSE)) get(".plotbench_project", envir = env) else NULL
+  project <- if (exists(".agrafeuse_project", envir = env, inherits = FALSE)) get(".agrafeuse_project", envir = env) else NULL
   frames <- list()
-  for (nm in setdiff(nms, c(".plotbench_project", "print.pb_result"))) {
+  for (nm in setdiff(nms, c(".agrafeuse_project", "print.ag_result"))) {
     obj <- get(nm, envir = env)
     if (is.matrix(obj) && length(dim(obj)) == 2) obj <- as.data.frame(obj)
-    if (is.data.frame(obj)) frames[[nm]] <- jsonlite::fromJSON(pb_table_json(obj), simplifyVector = FALSE)
+    if (is.data.frame(obj)) frames[[nm]] <- jsonlite::fromJSON(ag_table_json(obj), simplifyVector = FALSE)
   }
-  pb_json(list(project = project, frames = frames, objects = I(nms)))
+  ag_json(list(project = project, frames = frames, objects = I(nms)))
 }
 
 # Check that a piece of user-written code parses, without running it.
-pb_check_code <- function(code) {
+ag_check_code <- function(code) {
   res <- tryCatch({ parse(text = code, keep.source = FALSE); NULL }, error = function(e) conditionMessage(e))
-  pb_json(list(ok = is.null(res), error = res))
+  ag_json(list(ok = is.null(res), error = res))
 }

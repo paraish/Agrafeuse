@@ -66,7 +66,7 @@ export function toRName(display, taken = new Set(), fallback = 'x') {
     .replace(/^_+|_+$/g, '');
   if (!base) base = fallback;
   if (/^[0-9]/.test(base)) base = `${fallback}_${base}`;
-  if (RESERVED.has(base) || base.startsWith('pb_')) base = `${base}_`;
+  if (RESERVED.has(base) || base.startsWith('ag_')) base = `${base}_`;
   let name = base;
   let i = 2;
   while (taken.has(name)) name = `${base}_${i++}`;

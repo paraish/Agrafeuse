@@ -16,8 +16,8 @@ try { ({ chromium } = require('playwright')); } catch {
 const PORT = 8799;
 const TOKEN = 'e2e-token';
 const root = new URL('..', import.meta.url).pathname;
-const tmp = mkdtempSync(join(tmpdir(), 'pb-e2e-'));
-const server = spawn('node', ['dev/r-bridge.mjs'], { cwd: root, env: { ...process.env, PORT: String(PORT), PLOTBENCH_TOKEN: TOKEN }, stdio: ['ignore', 'pipe', 'inherit'] });
+const tmp = mkdtempSync(join(tmpdir(), 'ag-e2e-'));
+const server = spawn('node', ['dev/r-bridge.mjs'], { cwd: root, env: { ...process.env, PORT: String(PORT), AGRAFEUSE_TOKEN: TOKEN }, stdio: ['ignore', 'pipe', 'inherit'] });
 await new Promise((res) => server.stdout.on('data', (d) => { if (String(d).includes('http')) res(); }));
 
 let failures = 0;
@@ -40,7 +40,7 @@ try {
   await page.evaluate(() => localStorage.clear());
   await page.reload();
   await ready();
-  check(await page.locator('.nav-item').count() >= 10, 'example project loads');
+  check(await page.locator('.nav li[data-id]').count() === 4, 'example project loads (one dataset, transform, analysis, graph)');
 
   // --- type and paste data into a new column table -----------------------------------
   await page.click('[data-k="new-data"]');
@@ -79,6 +79,27 @@ try {
   check(await page.locator('.preview-status .message.error').count() === 0, 'bar graph renders');
   const graphName = await page.inputValue('[data-k="item-name"]');
 
+  // Resize by dragging the graph's corner.
+  const w0 = Number(await page.inputValue('[data-k="size-width"]'));
+  const frame = await page.locator('.plot-frame').boundingBox();
+  await page.mouse.move(frame.x + frame.width / 2, frame.y + frame.height / 2);
+  const corner = await page.locator('.rh-se').boundingBox();
+  await page.mouse.move(corner.x + corner.width / 2, corner.y + corner.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(corner.x + 100, corner.y + corner.height / 2, { steps: 6 });
+  await page.mouse.up();
+  await settle();
+  const w1 = Number(await page.inputValue('[data-k="size-width"]'));
+  check(w1 > w0, `dragging the corner resizes the graph (${w0} → ${w1} in)`);
+
+  // Formatting from the panel under the graph.
+  await page.click('[data-k="y-title-underline"]');
+  await page.click('[data-k="x-angle:45"]');
+  await settle();
+  const styled = await page.evaluate(() => window.agrafeuse.engine.result(window.agrafeuse.store.selected).code);
+  check(styled.includes('quote(underline(') && styled.includes('angle = 45'), 'underlined Y title and angled X labels');
+  check(await page.locator('.preview-status .message.error').count() === 0, 'formatted graph renders');
+
   // Add a layer and turn it into a box plot with a fixed colour.
   await page.click('[data-k="add-layer"]');
   const lastGeom = page.locator('.layer').last().locator('.card-head select');
@@ -86,7 +107,7 @@ try {
   await page.locator('.layer').last().locator('[data-k$="aes-colour-mode:const"]').click();
   await settle();
   check(await page.locator('.preview-status .message.error').count() === 0, 'added a box plot layer with a fixed colour');
-  const code = await page.evaluate(() => window.plotbench.engine.result(window.plotbench.store.selected).code);
+  const code = await page.evaluate(() => window.agrafeuse.engine.result(window.agrafeuse.store.selected).code);
   check(code.includes('geom_boxplot(') && code.includes('colour = "#000000"'), 'graph code has the new layer');
 
   // --- analysis, then onto the graph ----------------------------------------------------------
@@ -99,8 +120,8 @@ try {
   await page.click('[data-k="to-graph"]');
   await page.click(`.choice-list button:has-text("${graphName}")`);
   await settle();
-  const gcode = await page.evaluate(() => window.plotbench.engine.result(window.plotbench.store.selected).code);
-  check(gcode.includes('pb_brackets('), 'analysis added to the graph as brackets');
+  const gcode = await page.evaluate(() => window.agrafeuse.engine.result(window.agrafeuse.store.selected).code);
+  check(gcode.includes('ag_brackets('), 'analysis added to the graph as brackets');
   check(await page.locator('.preview-status .message.error').count() === 0, 'graph with brackets renders');
 
   // --- every test type in the dialog runs on suitable example data ----------------------------
@@ -116,7 +137,7 @@ try {
   // --- code view ------------------------------------------------------------------------------------
   await page.click('.nav-item:has-text("Whole project as R code")');
   const script = await page.textContent('pre.code');
-  check(script.includes('library(ggplot2)') && script.includes('pb_brackets('), 'whole-project script');
+  check(script.includes('library(ggplot2)') && script.includes('ag_brackets('), 'whole-project script');
 
   // --- export -----------------------------------------------------------------------------------------
   await nav(graphName);
@@ -136,7 +157,7 @@ try {
   const saved = join(tmp, 'saved.RData');
   await dl.saveAs(saved);
   const rcheck = execFileSync(process.env.R_SCRIPT || 'Rscript', ['-e', `e <- new.env(); load("${saved}", envir = e); cat(sort(ls(e, all.names = TRUE)), sep = ",")`], { encoding: 'utf8' });
-  check(rcheck.includes('.plotbench_project') && rcheck.includes('one_way_anova') && rcheck.includes('plant_growth'), `RData contains objects (${rcheck.split(',').length} objects)`);
+  check(rcheck.includes('.agrafeuse_project') && rcheck.includes('one_way_anova') && rcheck.includes('plant_growth'), `RData contains objects (${rcheck.split(',').length} objects)`);
   await page.click('button:has-text("New")');
   await page.click('.modal-actions button:has-text("Blank project")');
   check(await page.locator('.nav-item:not(:has-text("Whole project"))').count() === 0, 'blank project');

@@ -10,4 +10,4 @@ store.restore();
 engine.start().catch(() => { /* shown in the status pill */ });
 
 // Handy for debugging in the browser console.
-window.plotbench = { store, engine, app };
+window.agrafeuse = { store, engine, app };

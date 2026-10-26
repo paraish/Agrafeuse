@@ -25,8 +25,8 @@ export class CodeView {
       h('div.item-head', h('div.kind', 'R code'), h('h2.title', 'The whole project as an R script'), h('div.head-actions',
         button('Copy', () => navigator.clipboard.writeText(this.script()).then(() => toast('Copied the script.')), { iconName: 'copy' }),
         button('Download .R', () => download(this.script(), safeFilename(this.app.store.project.name, 'R'), 'text/plain'), { iconName: 'download', kind: 'primary' }))),
-      h('p.lead', 'Run this in R or RStudio to recreate every table, analysis and graph. It is the same code Plotbench runs in your browser, so results match.'),
-      h('div.toolbar', checkbox(this.includeHelpers, 'Include the Plotbench helper functions (pb_…) so the script runs on its own', (v) => { this.includeHelpers = v; this.render(); })),
+      h('p.lead', 'Run this in R or RStudio to recreate every table, analysis and graph. It is the same code Agrafeuse runs in your browser, so results match.'),
+      h('div.toolbar', checkbox(this.includeHelpers, 'Include the Agrafeuse helper functions (ag_…) so the script runs on its own', (v) => { this.includeHelpers = v; this.render(); })),
       codeBlock(code));
   }
 }

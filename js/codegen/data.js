@@ -58,7 +58,7 @@ export function inferColumns(table) {
   return { nrow, columns: out };
 }
 
-// The same shape the R side returns from pb_describe(), so dropdowns can be
+// The same shape the R side returns from ag_describe(), so dropdowns can be
 // filled before R has started.
 export function dataSchema(table) {
   const { nrow, columns } = inferColumns(table);

@@ -2,7 +2,7 @@
 import { emptyProject, getItem, clone } from './model.js';
 import { exampleProject } from './example.js';
 
-const AUTOSAVE_KEY = 'plotbench:project';
+const AUTOSAVE_KEY = 'agrafeuse:project';
 
 export class Store extends EventTarget {
   constructor() {
@@ -41,7 +41,7 @@ export class Store extends EventTarget {
       const raw = localStorage.getItem(AUTOSAVE_KEY);
       if (raw) {
         const p = JSON.parse(raw);
-        if (p && p.format === 'plotbench' && Array.isArray(p.items)) return this.load(p);
+        if (p && p.format === 'agrafeuse' && Array.isArray(p.items)) return this.load(p);
       }
     } catch { /* storage unavailable or corrupt: start fresh */ }
     this.load(exampleProject());

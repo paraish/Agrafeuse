@@ -96,7 +96,7 @@ export function pickFile(accept) {
 }
 
 export function safeFilename(name, ext) {
-  return `${String(name || 'plotbench').replace(/[^\w\- ]+/g, '').trim().replace(/\s+/g, '_') || 'plotbench'}.${ext}`;
+  return `${String(name || 'agrafeuse').replace(/[^\w\- ]+/g, '').trim().replace(/\s+/g, '_') || 'agrafeuse'}.${ext}`;
 }
 
 // Inline SVG icons (Lucide-style strokes) so the app needs no icon font.

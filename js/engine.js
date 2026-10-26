@@ -10,7 +10,7 @@ import { usesMixedModel } from './codegen/stats.js';
 import { dataSchema } from './codegen/data.js';
 import { BASE_PACKAGES } from './codegen/script.js';
 
-const TMP = '/tmp/plotbench';
+const TMP = '/tmp/agrafeuse';
 
 class WebRBackend {
   name = 'webR';
@@ -65,7 +65,7 @@ class BridgeBackend {
   async evalString(code) {
     const r = await fetch('/__r/eval', {
       method: 'POST',
-      headers: { 'Content-Type': 'text/plain; charset=utf-8', 'X-Plotbench-Token': config.bridgeToken },
+      headers: { 'Content-Type': 'text/plain; charset=utf-8', 'X-Agrafeuse-Token': config.bridgeToken },
       body: code,
     });
     const text = await r.text();
@@ -188,7 +188,7 @@ export class Engine extends EventTarget {
 
   // Run code; returns { ok, error, warnings, messages, value }.
   async run(code) {
-    const out = await this.backend.evalString(`pb_eval_json(${rstr(code)})`);
+    const out = await this.backend.evalString(`ag_eval_json(${rstr(code)})`);
     const res = JSON.parse(out);
     res.warnings = [].concat(res.warnings || []);
     res.messages = [].concat(res.messages || []);
@@ -246,8 +246,8 @@ export class Engine extends EventTarget {
     } catch (e) {
       return this.store(id, { ok: false, error: e.message, version: null });
     }
-    const post = item.kind === 'analysis' ? `\npb_result_json(${item.rname})`
-      : item.kind === 'graph' ? '\n"ok"' : `\npb_describe(${item.rname})`;
+    const post = item.kind === 'analysis' ? `\nag_result_json(${item.rname})`
+      : item.kind === 'graph' ? '\n"ok"' : `\nag_describe(${item.rname})`;
     const res = await this.run(code + post);
     const out = { ok: res.ok, error: res.error, warnings: res.warnings, messages: res.messages, version: res.ok ? version : null, code };
     if (res.ok && item.kind === 'analysis') out.result = JSON.parse(res.value);
@@ -285,7 +285,7 @@ export class Engine extends EventTarget {
       const r = await this.ensureNow(id);
       if (!r.ok) return { ok: false, error: r.error };
       const item = getItem(this.getProject(), id);
-      const res = await this.run(`pb_preview(${item.rname}, ${n})`);
+      const res = await this.run(`ag_preview(${item.rname}, ${n})`);
       return res.ok ? { ok: true, table: JSON.parse(res.value), warnings: r.warnings } : res;
     });
   }
@@ -307,7 +307,7 @@ export class Engine extends EventTarget {
       const prev = this.renders.get(id);
       if (prev && prev.key === key && prev.ok) return prev;
       const res = JSON.parse(await this.backend.evalString(
-        `pb_draw(${g.rname}, ${rstr(`${TMP}/preview.svg`)}, "svg", ${Number(s.width) || 5}, ${Number(s.height) || 4}, inline = TRUE)`));
+        `ag_draw(${g.rname}, ${rstr(`${TMP}/preview.svg`)}, "svg", ${Number(s.width) || 5}, ${Number(s.height) || 4}, inline = TRUE)`));
       const out = { ok: res.ok, error: res.error, svg: res.svg, warnings: [...(r.warnings || []), ...[].concat(res.warnings || [])], key };
       this.renders.set(id, out);
       return out;
@@ -322,7 +322,7 @@ export class Engine extends EventTarget {
       const g = getItem(this.getProject(), id);
       const file = `${TMP}/export.${format}`;
       const res = JSON.parse(await this.backend.evalString(
-        `pb_draw(${g.rname}, ${rstr(file)}, ${rstr(format)}, ${Number(width) || 5}, ${Number(height) || 4}, dpi = ${Number(dpi) || 300})`));
+        `ag_draw(${g.rname}, ${rstr(file)}, ${rstr(format)}, ${Number(width) || 5}, ${Number(height) || 4}, dpi = ${Number(dpi) || 300})`));
       if (!res.ok) throw new Error(res.error);
       return this.backend.readFile(file);
     });
@@ -338,7 +338,7 @@ export class Engine extends EventTarget {
         if (r.ok) names.push(it.rname);
       }
       const file = `${TMP}/project.RData`;
-      const res = await this.run(`pb_save_rdata(${rstr(file)}, ${rstrvec(names)}, ${rstr(JSON.stringify(project))}); "ok"`);
+      const res = await this.run(`ag_save_rdata(${rstr(file)}, ${rstrvec(names)}, ${rstr(JSON.stringify(project))}); "ok"`);
       if (!res.ok) throw new Error(res.error);
       return this.backend.readFile(file);
     });
@@ -349,7 +349,7 @@ export class Engine extends EventTarget {
     return this.enqueue(async () => {
       const file = `${TMP}/upload.RData`;
       await this.backend.writeFile(file, bytes);
-      const res = await this.run(`pb_load_rdata(${rstr(file)})`);
+      const res = await this.run(`ag_load_rdata(${rstr(file)})`);
       if (!res.ok) throw new Error(`This file could not be read as .RData: ${res.error}`);
       const out = JSON.parse(res.value);
       return { project: out.project ? JSON.parse(out.project) : null, frames: out.frames || {}, objects: out.objects || [] };
@@ -359,7 +359,7 @@ export class Engine extends EventTarget {
   // A data frame that ships with R (iris, mtcars, ToothGrowth…) as grid rows.
   rDataset(name) {
     return this.enqueue(async () => {
-      const res = await this.run(`pb_table_json(get(${rstr(name)}, envir = as.environment("package:datasets")))`);
+      const res = await this.run(`ag_table_json(get(${rstr(name)}, envir = as.environment("package:datasets")))`);
       if (!res.ok) throw new Error(res.error);
       return JSON.parse(res.value);
     });
@@ -367,7 +367,7 @@ export class Engine extends EventTarget {
 
   // Check that user-typed R code at least parses.
   checkCode(code) {
-    return this.enqueue(async () => JSON.parse(await this.backend.evalString(`pb_check_code(${rstr(code)})`)));
+    return this.enqueue(async () => JSON.parse(await this.backend.evalString(`ag_check_code(${rstr(code)})`)));
   }
 
   // Forget cached results (e.g. after loading a different project).

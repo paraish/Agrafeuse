@@ -1,0 +1,19 @@
+cff-version: 1.2.0
+message: "If Agrafeuse contributed to your work, please cite it as below."
+title: "Agrafeuse: a free, open-source tool for scientific graphs and statistics with R"
+type: software
+authors:
+  - family-names: Misra
+    given-names: Paraish S.
+version: 0.1.0
+date-released: 2026-10-26
+license: AGPL-3.0-only
+repository-code: "https://github.com/paraish/Agrafeuse"
+url: "https://paraish.github.io/Agrafeuse/"
+keywords:
+  - statistics
+  - data visualization
+  - ggplot2
+  - R
+  - webR
+  - figure generation

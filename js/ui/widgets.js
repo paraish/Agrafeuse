@@ -122,7 +122,7 @@ export function levelsOf(schema, col) {
   return schema?.columns?.find((c) => c.name === col)?.levels || [];
 }
 
-// A data frame (as returned by pb_preview / pb_result_json) as an HTML table.
+// A data frame (as returned by ag_preview / ag_result_json) as an HTML table.
 export function dataTable(table, { maxRows = 500, highlight } = {}) {
   if (!table || !table.columns) return h('div.hint', 'No data.');
   const cols = table.columns.map((c) => (typeof c === 'string' ? { name: c } : c));

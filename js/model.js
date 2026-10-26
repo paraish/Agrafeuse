@@ -20,7 +20,7 @@ const AVOID = ['c', 't', 'T', 'F', 'D', 'I', 'q', 'data', 'mean', 'sd', 'df', 'p
   'test', 'cmp', 'start', 'value', 'group', 'factor', 'levels', 'names', 'length', 'summary', 'print'];
 
 export function emptyProject(name = 'Untitled project') {
-  return { format: 'plotbench', version: 1, name, seq: 0, items: [] };
+  return { format: 'agrafeuse', version: 1, name, seq: 0, items: [] };
 }
 
 export function getItem(project, id) {

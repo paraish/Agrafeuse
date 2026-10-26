@@ -7,6 +7,7 @@ import {
   newDataTable, newTransform, newAnalysis, datasets, emptyProject,
 } from '../model.js';
 import { exampleProject } from '../example.js';
+import { ABOUT, CITATION, AI_CREDIT } from '../about.js';
 import { parseDelimited, tableFromRows } from '../codegen/data.js';
 import { TESTS, TEST_CATEGORIES } from '../codegen/stats.js';
 import { projectScript } from '../codegen/script.js';
@@ -60,7 +61,7 @@ export class App {
     this.redoBtn = iconButton('redo', 'Redo (Ctrl+Shift+Z)', () => this.store.redo());
     const top = h('header.topbar',
       iconButton('menu', 'Show or hide the project panel', () => this.root.classList.toggle('nav-open'), { cls: 'nav-toggle' }),
-      h('div.brand', h('span.logo', { html: '<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><rect x="2" y="2" width="20" height="20" rx="5" fill="currentColor"/><path d="M7 16.5v-4M11 16.5v-8M15 16.5v-6M19 16.5H5" stroke="#fff" stroke-width="2" stroke-linecap="round"/></svg>' }), h('span', 'Plotbench')),
+      h('div.brand', h('img.logo', { src: 'assets/icon.svg', alt: '', width: 38, height: 35 }), h('span', 'Agrafeuse')),
       this.projectName,
       h('span.grow'),
       button('New', () => this.newProject(), { iconName: 'file', title: 'Start a new project' }),
@@ -70,8 +71,31 @@ export class App {
       this.status);
     this.nav = h('nav.nav', { 'aria-label': 'Project' });
     this.main = h('main.main');
-    fill(this.root, top, this.nav, this.main);
+    fill(this.root, top, this.nav, this.main, this.footer());
     this.updateHistoryButtons();
+  }
+
+  // Citation and attribution. Copies and modified versions must keep this
+  // notice (GNU AGPL v3 section 7(b); see NOTICE).
+  footer() {
+    const link = (href, text) => h('a', { href, target: '_blank', rel: 'noopener' }, text);
+    const citeText = h('span.cite-text', CITATION);
+    const copy = () => {
+      const fallback = () => {
+        window.getSelection().selectAllChildren(citeText);
+        toast('Copying is blocked here; the citation is selected, so press Ctrl+C or ⌘C.');
+      };
+      try { navigator.clipboard.writeText(CITATION).then(() => toast('Citation copied.'), fallback); } catch { fallback(); }
+    };
+    return h('footer.site-foot',
+      h('p.cite', h('strong', 'How to cite: '), `if ${ABOUT.name} contributed to your work, please cite `, citeText, ' ',
+        h('button.btn.btn-small', { type: 'button', onclick: copy }, 'Copy citation')),
+      h('p.lab', `${ABOUT.name} is made by the Misra Lab. Want to see what else we do? Visit `, link(ABOUT.lab, 'misralab.ca'), '. ',
+        AI_CREDIT),
+      h('p.legal', 'For research use only, not for diagnostic procedures. Provided as is, without warranty. ',
+        'Statistics are computed by R; please also cite R and the R packages your analysis used (listed in its R code). ',
+        'Not affiliated with or endorsed by GraphPad Software. Free software under the ', link(ABOUT.license, 'GNU AGPL v3'), '; ',
+        link(ABOUT.url, 'source code'), '. Your data stays on your computer.'));
   }
 
   renderNav() {
@@ -124,7 +148,8 @@ export class App {
 
   welcome() {
     return h('div.view.welcome',
-      h('h1', 'Plotbench'),
+      h('img', { src: 'assets/icon.svg', alt: '', width: 120, height: 120 }),
+      h('h1', 'Agrafeuse'),
       h('p.lead', 'Graphs and statistics with R, in your browser. Your data never leaves this computer.'),
       h('div.welcome-actions',
         button('New data table', () => this.create('data'), { iconName: 'table', kind: 'primary' }),
@@ -362,7 +387,7 @@ export class App {
               state.wide ? null : t.needs.includes('x') || t.key === 'time_course' ? field('X', select(state.x, cols, (v) => { state.x = v; }, { k: 'g-x', placeholder: 'Choose…' })) : null,
               state.wide ? null : t.needs.includes('y') ? field(t.key === 'histogram' ? 'Values' : 'Y', select(state.y, cols, (v) => { state.y = v; }, { k: 'g-y', placeholder: 'Choose…' })) : null,
               state.wide ? null : t.needs.includes('group') || t.optional?.includes('group') ? field(t.key === 'grouped_bars' ? 'Groups side by side' : 'Lines by (optional)', select(state.group, cols, (v) => { state.group = v; }, { k: 'g-group', placeholder: '(none)' })) : null),
-            state.wide ? h('div.hint', 'This table has one column per group, so the graph will use its long version (a "group" and a "value" column), which Plotbench creates for you.') : null,
+            state.wide ? h('div.hint', 'This table has one column per group, so the graph will use its long version (a "group" and a "value" column), which Agrafeuse creates for you.') : null,
             h('div.modal-actions', button('Cancel', () => close(null)), button('Create graph', () => close(state), { kind: 'primary', k: 'create-graph' })));
         };
         draw();
@@ -446,7 +471,7 @@ export class App {
       }
       if (name.endsWith('.json')) {
         const proj = JSON.parse(await file.text());
-        if (proj.format !== 'plotbench') throw new Error('Not a Plotbench project file.');
+        if (proj.format !== 'agrafeuse') throw new Error('Not a Agrafeuse project file.');
         this.loadProject(proj);
         return;
       }

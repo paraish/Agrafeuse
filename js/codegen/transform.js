@@ -37,7 +37,7 @@ export const STEP_TYPES = {
     label: 'Transpose (swap rows and columns)',
     help: 'Rows become columns. Optionally use one column\'s values as the new column names.',
     defaults: () => ({ names_col: '' }),
-    code: (s) => [`pb_transpose(${s.names_col ? `names_col = ${rstr(s.names_col)}` : ''})`],
+    code: (s) => [`ag_transpose(${s.names_col ? `names_col = ${rstr(s.names_col)}` : ''})`],
   },
   filter: {
     label: 'Filter rows',
@@ -63,7 +63,7 @@ export const STEP_TYPES = {
     defaults: () => ({ column: '', levels: [] }),
     code: (s) => {
       if (!s.column) throw new Error('Choose a column.');
-      return [`mutate(${rsym(s.column)} = pb_relevel(${rsym(s.column)}, ${rvec((s.levels || []).map(rstr), '    ')}))`];
+      return [`mutate(${rsym(s.column)} = ag_relevel(${rsym(s.column)}, ${rvec((s.levels || []).map(rstr), '    ')}))`];
     },
   },
   rename: {
@@ -92,7 +92,7 @@ export const STEP_TYPES = {
     code: (s) => {
       if (!s.column) throw new Error('Choose a column.');
       const c = rsym(s.column);
-      const fn = { factor: `pb_factor(${c})`, numeric: `as.numeric(as.character(${c}))`, text: `as.character(${c})` }[s.to];
+      const fn = { factor: `ag_factor(${c})`, numeric: `as.numeric(as.character(${c}))`, text: `as.character(${c})` }[s.to];
       return [`mutate(${c} = ${fn})`];
     },
   },

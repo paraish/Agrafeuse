@@ -29,11 +29,11 @@ export const SHAPES = [
 export const LINETYPES = ['solid', 'dashed', 'dotted', 'dotdash', 'longdash', 'twodash'];
 
 export const ERROR_TYPES = [
-  ['sem', 'Mean ± SEM', 'pb_mean_sem'],
-  ['sd', 'Mean ± SD', 'pb_mean_sd'],
-  ['ci', 'Mean with 95% CI', 'pb_mean_ci'],
-  ['iqr', 'Median with interquartile range', 'pb_median_iqr'],
-  ['range', 'Median with range', 'pb_median_range'],
+  ['sem', 'Mean ± SEM', 'ag_mean_sem'],
+  ['sd', 'Mean ± SD', 'ag_mean_sd'],
+  ['ci', 'Mean with 95% CI', 'ag_mean_ci'],
+  ['iqr', 'Median with interquartile range', 'ag_median_iqr'],
+  ['range', 'Median with range', 'ag_median_range'],
 ];
 const errorFun = (k) => (ERROR_TYPES.find((e) => e[0] === k) || ERROR_TYPES[0])[2];
 
@@ -250,8 +250,23 @@ export function geomDefaults(key) {
   return out;
 }
 
+// Tick label formats for continuous axes: [label, R code].
+export const NUMBER_FORMATS = {
+  n0: ['1', 'scales::label_number(accuracy = 1)'],
+  n1: ['0.1', 'scales::label_number(accuracy = 0.1)'],
+  n2: ['0.01', 'scales::label_number(accuracy = 0.01)'],
+  n3: ['0.001', 'scales::label_number(accuracy = 0.001)'],
+  comma: ['1,000', 'scales::label_comma()'],
+  pct: ['Add a % sign (50 → 50%)', 'scales::label_percent(scale = 1)'],
+  pct100: ['As percent (0.5 → 50%)', 'scales::label_percent()'],
+  sci: ['Scientific (1e+03)', 'scales::label_scientific()'],
+  pow10: ['Powers of ten (10³)', 'scales::label_log()'],
+};
+
+export const FONTS = [['', 'Sans serif'], ['serif', 'Serif'], ['mono', 'Monospace']];
+
 export const THEMES = [
-  ['prism', 'Lab figure (bold, no grid)', 'pb_theme_prism'],
+  ['prism', 'Lab figure (bold, no grid)', 'ag_theme_prism'],
   ['classic', 'Classic', 'theme_classic'],
   ['bw', 'Black & white grid', 'theme_bw'],
   ['minimal', 'Minimal', 'theme_minimal'],
@@ -370,16 +385,16 @@ export function graphCode(g, ctx) {
       if (ann.y_start !== '' && ann.y_start != null) a.push(`y_start = ${rnum(ann.y_start)}`);
       if (ann.step !== '' && ann.step != null && Number(ann.step) !== 0.09) a.push(`step = ${rnum(ann.step)}`);
       if (ann.text_size && Number(ann.text_size) !== 4.5) a.push(`text_size = ${rnum(ann.text_size)}`);
-      parts.push(`pb_brackets(${a.join(', ')})`);
+      parts.push(`ag_brackets(${a.join(', ')})`);
     } else if (ann.kind === 'label') {
       const a = [`${res}$label`, rstr(ann.position || 'top-left')];
       if (ann.text_size && Number(ann.text_size) !== 4.2) a.push(`size = ${rnum(ann.text_size)}`);
-      parts.push(`pb_corner_label(${a.join(', ')})`);
+      parts.push(`ag_corner_label(${a.join(', ')})`);
     } else if (ann.kind === 'curve') {
       const a = [res];
       if (ann.colour && ann.colour !== '#000000') a.push(`colour = ${rstr(ann.colour)}`);
       if (ann.band === false) a.push('band = FALSE');
-      parts.push(`pb_fit_curve(${a.join(', ')})`);
+      parts.push(`ag_fit_curve(${a.join(', ')})`);
     }
   }
 
@@ -396,7 +411,7 @@ export function graphCode(g, ctx) {
         else if (pal === 'grey') parts.push(`scale_${sc}_gradient(low = "grey85", high = "grey10")`);
         continue;
       }
-      if (pal === 'okabe') parts.push(`scale_${sc}_manual(values = pb_okabe_ito)`);
+      if (pal === 'okabe') parts.push(`scale_${sc}_manual(values = ag_okabe_ito)`);
       else if (pal === 'viridis') parts.push(`scale_${sc}_viridis_d(end = 0.9)`);
       else if (pal === 'grey') parts.push(sc === 'fill' ? 'scale_fill_grey(start = 0.35, end = 0.9)' : 'scale_colour_grey(start = 0, end = 0.6)');
       else if (pal === 'manual') {
@@ -408,18 +423,21 @@ export function graphCode(g, ctx) {
 
   // Axes.
   const axis = (which, s, discrete) => {
-    if (!s) return;
-    if (discrete) return;
+    if (!s || discrete) return;
     const lim = s.min !== '' && s.min != null || s.max !== '' && s.max != null
       ? `limits = c(${s.min === '' || s.min == null ? 'NA' : rnum(s.min)}, ${s.max === '' || s.max == null ? 'NA' : rnum(s.max)})` : null;
+    const linear = !s.trans || s.trans === 'identity';
     const a = [];
     if (lim) a.push(lim);
     if (s.from_zero) a.push('expand = expansion(mult = c(0, 0.05))');
+    if (Number(s.step) > 0 && (linear || s.trans === 'sqrt')) a.push(`breaks = scales::breaks_width(${rnum(s.step)})`);
+    if (s.format && NUMBER_FORMATS[s.format]) a.push(`labels = ${NUMBER_FORMATS[s.format][1]}`);
     if (s.trans === 'log10') parts.push(`scale_${which}_log10(${a.join(', ')})`);
     else if (s.trans === 'log2') parts.push(`scale_${which}_continuous(${['transform = "log2"', ...a].join(', ')})`);
     else if (s.trans === 'sqrt') parts.push(`scale_${which}_sqrt(${a.join(', ')})`);
+    else if (s.reverse) parts.push(`scale_${which}_reverse(${a.join(', ')})`);
     else if (a.length) parts.push(`scale_${which}_continuous(${a.join(', ')})`);
-    if (s.from_zero && s.trans !== 'log10' && s.trans !== 'log2') parts.push(`expand_limits(${which} = 0)`);
+    if (s.from_zero && linear && !s.reverse) parts.push(`expand_limits(${which} = 0)`);
   };
   axis('x', g.x_scale, xDiscrete);
   axis('y', g.y_scale, false);
@@ -432,13 +450,27 @@ export function graphCode(g, ctx) {
   }
   if (g.flip) parts.push('coord_flip()');
 
-  // Labels.
+  // Labels. Underlined titles are written as plotmath, e.g. quote(underline(bold("Dose"))).
   const L = g.labels || {};
+  const T = g.theme || {};
+  const ST = g.style || {};
+  const titlesBold = (T.name || 'prism') === 'prism';
+  const label = (text, st) => {
+    if (!st?.underline) return rstr(text);
+    let e = rstr(text);
+    if (st.italic) e = `italic(${e})`;
+    if (st.bold ?? titlesBold) e = `bold(${e})`;
+    return `quote(underline(${e}))`;
+  };
+  const defaultX = main?.aes?.x?.col;
+  const defaultY = (main?.aes?.y?.mode === 'col' ? main.aes.y : yLayer?.aes?.y)?.col;
   const labs = [];
-  if (L.title) labs.push(`title = ${rstr(L.title)}`);
+  if (L.title) labs.push(`title = ${label(L.title, ST.title)}`);
   if (L.subtitle) labs.push(`subtitle = ${rstr(L.subtitle)}`);
-  if (L.hide_x) labs.push('x = NULL'); else if (L.x) labs.push(`x = ${rstr(L.x)}`);
-  if (L.hide_y) labs.push('y = NULL'); else if (L.y) labs.push(`y = ${rstr(L.y)}`);
+  if (L.hide_x) labs.push('x = NULL');
+  else if (L.x || (ST.x_title?.underline && defaultX)) labs.push(`x = ${label(L.x || defaultX, ST.x_title)}`);
+  if (L.hide_y) labs.push('y = NULL');
+  else if (L.y || (ST.y_title?.underline && defaultY)) labs.push(`y = ${label(L.y || defaultY, ST.y_title)}`);
   if (L.legend) {
     for (const k of ['colour', 'fill', 'shape']) {
       if (dataLayers.some((l) => l.aes?.[k]?.mode === 'col')) labs.push(`${k} = ${rstr(L.legend)}`);
@@ -447,17 +479,43 @@ export function graphCode(g, ctx) {
   if (labs.length) parts.push(`labs(${labs.join(', ')})`);
 
   // Theme.
-  const T = g.theme || {};
   const themeFn = (THEMES.find((t) => t[0] === T.name) || THEMES[0])[2];
-  parts.push(`${themeFn}(base_size = ${rnum(T.base_size || 14)})`);
+  const themeArgs = [`base_size = ${rnum(T.base_size || 14)}`];
+  if (ST.family) themeArgs.push(`base_family = ${rstr(ST.family)}`);
+  parts.push(`${themeFn}(${themeArgs.join(', ')})`);
   const th = [];
   if (T.legend && T.legend !== 'right') th.push(`legend.position = ${rstr(T.legend)}`);
   if (L.hide_legend_title) th.push('legend.title = element_blank()');
-  if (Number(T.x_angle)) {
-    const ang = Number(T.x_angle);
-    th.push(`axis.text.x = element_text(angle = ${ang}, hjust = 1, vjust = ${ang === 90 ? 0.5 : 1})`);
+  // `bold: null` means "as the theme does" (the lab-figure theme has bold titles).
+  const face = (st, boldByDefault) => {
+    if (st?.underline) return 'plain';
+    if (st?.bold == null && st?.italic == null) return null;
+    const b = st.bold ?? boldByDefault;
+    const it = !!st.italic;
+    return b && it ? 'bold.italic' : b ? 'bold' : it ? 'italic' : 'plain';
+  };
+  const element = (name, st, extra = [], boldByDefault = false) => {
+    const a = [];
+    if (Number(st?.size) > 0) a.push(`size = ${rnum(st.size)}`);
+    const f = face(st, boldByDefault);
+    if (f) a.push(`face = ${rstr(f)}`);
+    if (st?.colour) a.push(`colour = ${rstr(st.colour)}`);
+    a.push(...extra);
+    if (a.length) th.push(`${name} = element_text(${a.join(', ')})`);
+  };
+  const align = { left: 0, center: 0.5, right: 1 }[ST.title?.align];
+  element('plot.title', ST.title, align !== undefined ? [`hjust = ${align}`] : [], titlesBold);
+  element('axis.title.x', ST.x_title, [], titlesBold);
+  element('axis.title.y', ST.y_title, [], titlesBold);
+  const xAngle = Number(ST.x_text?.angle ?? T.x_angle) || 0;
+  element('axis.text.x', ST.x_text, xAngle ? [`angle = ${xAngle}`, 'hjust = 1', `vjust = ${xAngle === 90 ? 0.5 : 1}`] : []);
+  const yAngle = Number(ST.y_text?.angle) || 0;
+  element('axis.text.y', ST.y_text, yAngle ? [`angle = ${yAngle}`, `hjust = ${yAngle === 90 ? 0.5 : 1}`] : []);
+  if (Number(ST.legend_text?.size) > 0) th.push(`legend.text = element_text(size = ${rnum(ST.legend_text.size)})`);
+  if (Number(ST.axis_line) > 0) {
+    th.push(`axis.line = element_line(linewidth = ${rnum(ST.axis_line)})`, `axis.ticks = element_line(linewidth = ${rnum(ST.axis_line)})`);
   }
-  if (th.length) parts.push(`theme(${th.join(', ')})`);
+  if (th.length) parts.push(`theme(\n  ${th.join(',\n  ')}\n)`);
 
   const extra = (g.custom || '').trim();
   if (extra) parts.push(extra);

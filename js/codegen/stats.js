@@ -74,9 +74,9 @@ function prepareGroups(a, ctx, { subject = false, two = false, oneLevel = false 
     steps.push(`filter(${rsym(a.group)} %in% ${rvec(levels.map(rstr), '    ')})`);
     muts.push(`${rsym(a.group)} = factor(${rsym(a.group)}, levels = ${rvec(levels.map(rstr), '    ')})`);
   } else if (a.group) {
-    muts.push(`${rsym(a.group)} = pb_factor(${rsym(a.group)})`);
+    muts.push(`${rsym(a.group)} = ag_factor(${rsym(a.group)})`);
   }
-  if (subject) muts.push(`${rsym(a.subject)} = pb_factor(${rsym(a.subject)})`);
+  if (subject) muts.push(`${rsym(a.subject)} = ag_factor(${rsym(a.subject)})`);
   if (muts.length) steps.push(`mutate(${muts.join(', ')})`);
   return { lines: [`d <- ${src} |>\n    ${steps.join(' |>\n    ')}`], y: a.y, group: a.group, subject: a.subject, levels };
 }
@@ -142,7 +142,7 @@ export const TESTS = {
     annotations: [],
     code(a, ctx) {
       const p = prepareGroups(a, ctx, { oneLevel: !a.group && a.layout !== 'columns' });
-      return [...p.lines, `pb_descriptive(d, ${rstr(p.y)}${p.group ? `, ${rstr(p.group)}` : ''})`];
+      return [...p.lines, `ag_descriptive(d, ${rstr(p.y)}${p.group ? `, ${rstr(p.group)}` : ''})`];
     },
   },
   normality: {
@@ -154,7 +154,7 @@ export const TESTS = {
     annotations: [],
     code(a, ctx) {
       const p = prepareGroups(a, ctx, { oneLevel: !a.group && a.layout !== 'columns' });
-      return [...p.lines, `pb_normality(d, ${rstr(p.y)}${p.group ? `, ${rstr(p.group)}` : ''})`];
+      return [...p.lines, `ag_normality(d, ${rstr(p.y)}${p.group ? `, ${rstr(p.group)}` : ''})`];
     },
   },
 
@@ -172,7 +172,7 @@ export const TESTS = {
       const title = welch ? "Welch's t test" : "Unpaired t test";
       return [...p.lines,
         `test <- t.test(${formula(p.y, rsym(p.group))}, data = d, var.equal = ${rbool(!welch)}, alternative = ${rstr(o.alternative || 'two.sided')})`,
-        `pb_result_two_group(test, d, ${rstr(p.y)}, ${rstr(p.group)}, ${rvec(twoLevels(a, p).map(rstr))}, ${rstr(title)})`];
+        `ag_result_two_group(test, d, ${rstr(p.y)}, ${rstr(p.group)}, ${rvec(twoLevels(a, p).map(rstr))}, ${rstr(title)})`];
     },
   },
   ttest_paired: {
@@ -187,7 +187,7 @@ export const TESTS = {
       const [x1, x2] = pairedOrder(a, p);
       return [...p.lines, wideLines(p),
         `test <- t.test(${x1}, ${x2}, paired = TRUE, alternative = ${rstr(a.options?.alternative || 'two.sided')})`,
-        `pb_result_two_group(test, d, ${rstr(p.y)}, ${rstr(p.group)}, ${rvec(twoLevels(a, p).map(rstr))}, "Paired t test", paired = TRUE)`];
+        `ag_result_two_group(test, d, ${rstr(p.y)}, ${rstr(p.group)}, ${rvec(twoLevels(a, p).map(rstr))}, "Paired t test", paired = TRUE)`];
     },
   },
   ttest_ratio: {
@@ -202,7 +202,7 @@ export const TESTS = {
       const [x1, x2] = pairedOrder(a, p);
       return [...p.lines, wideLines(p),
         `test <- t.test(log(${x1}), log(${x2}), paired = TRUE, alternative = ${rstr(a.options?.alternative || 'two.sided')})`,
-        `pb_result_two_group(test, d, ${rstr(p.y)}, ${rstr(p.group)}, ${rvec(twoLevels(a, p).map(rstr))}, "Ratio paired t test", paired = TRUE, ratio = TRUE)`];
+        `ag_result_two_group(test, d, ${rstr(p.y)}, ${rstr(p.group)}, ${rvec(twoLevels(a, p).map(rstr))}, "Ratio paired t test", paired = TRUE, ratio = TRUE)`];
     },
   },
   mann_whitney: {
@@ -216,7 +216,7 @@ export const TESTS = {
       const p = prepareGroups(a, ctx, { two: true });
       return [...p.lines,
         `test <- wilcox.test(${formula(p.y, rsym(p.group))}, data = d, conf.int = TRUE, alternative = ${rstr(a.options?.alternative || 'two.sided')})`,
-        `pb_result_two_group(test, d, ${rstr(p.y)}, ${rstr(p.group)}, ${rvec(twoLevels(a, p).map(rstr))}, "Mann-Whitney test")`];
+        `ag_result_two_group(test, d, ${rstr(p.y)}, ${rstr(p.group)}, ${rvec(twoLevels(a, p).map(rstr))}, "Mann-Whitney test")`];
     },
   },
   wilcoxon_paired: {
@@ -231,7 +231,7 @@ export const TESTS = {
       const [x1, x2] = pairedOrder(a, p);
       return [...p.lines, wideLines(p),
         `test <- wilcox.test(${x1}, ${x2}, paired = TRUE, conf.int = TRUE, alternative = ${rstr(a.options?.alternative || 'two.sided')})`,
-        `pb_result_two_group(test, d, ${rstr(p.y)}, ${rstr(p.group)}, ${rvec(twoLevels(a, p).map(rstr))}, "Wilcoxon matched-pairs test", paired = TRUE)`];
+        `ag_result_two_group(test, d, ${rstr(p.y)}, ${rstr(p.group)}, ${rvec(twoLevels(a, p).map(rstr))}, "Wilcoxon matched-pairs test", paired = TRUE)`];
     },
   },
   one_sample: {
@@ -263,7 +263,7 @@ export const TESTS = {
       const title = wil ? 'Wilcoxon signed-rank test' : 'One-sample t test';
       return [...lines,
         `test <- ${wil ? 'wilcox.test' : 't.test'}(d$${rsym(y)}, mu = ${mu}${wil ? ', conf.int = TRUE' : ''}, alternative = ${rstr(o.alternative || 'two.sided')})`,
-        `pb_result_one_sample(test, d, ${rstr(y)}, ${mu}, ${rstr(title)})`];
+        `ag_result_one_sample(test, d, ${rstr(y)}, ${mu}, ${rstr(title)})`];
     },
   },
 
@@ -282,7 +282,7 @@ export const TESTS = {
       return [...p.lines,
         `fit <- aov(${formula(p.y, rsym(p.group))}, data = d)`,
         ...e.lines,
-        `pb_result_anova(fit, ${e.mc}, d, ${rstr(p.y)}, ${rstr(p.group)}, "One-way ANOVA"${e.name ? `, ${rstr(e.name)}` : ''})`];
+        `ag_result_anova(fit, ${e.mc}, d, ${rstr(p.y)}, ${rstr(p.group)}, "One-way ANOVA"${e.name ? `, ${rstr(e.name)}` : ''})`];
     },
   },
   welch_anova: {
@@ -297,8 +297,8 @@ export const TESTS = {
       const gh = (a.options?.posthoc || 'gh') === 'gh';
       return [...p.lines,
         `test <- oneway.test(${formula(p.y, rsym(p.group))}, data = d, var.equal = FALSE)`,
-        gh ? `cmp <- pb_games_howell(d$${rsym(p.y)}, d$${rsym(p.group)})` : 'cmp <- NULL',
-        `pb_result_htest_groups(test, cmp, d, ${rstr(p.y)}, ${rstr(p.group)}, "Welch's ANOVA", "Games-Howell multiple comparisons")`];
+        gh ? `cmp <- ag_games_howell(d$${rsym(p.y)}, d$${rsym(p.group)})` : 'cmp <- NULL',
+        `ag_result_htest_groups(test, cmp, d, ${rstr(p.y)}, ${rstr(p.group)}, "Welch's ANOVA", "Games-Howell multiple comparisons")`];
     },
   },
   kruskal: {
@@ -313,11 +313,11 @@ export const TESTS = {
       const p = prepareGroups(a, ctx);
       const o = a.options || {};
       const cmp = o.compare === 'none' ? 'cmp <- NULL'
-        : `cmp <- pb_dunn(d$${rsym(p.y)}, d$${rsym(p.group)}, adjust = ${rstr(o.padjust || 'bonferroni')}${o.compare === 'control' && o.control ? `, control = ${rstr(o.control)}` : ''})`;
+        : `cmp <- ag_dunn(d$${rsym(p.y)}, d$${rsym(p.group)}, adjust = ${rstr(o.padjust || 'bonferroni')}${o.compare === 'control' && o.control ? `, control = ${rstr(o.control)}` : ''})`;
       return [...p.lines,
         `test <- kruskal.test(${formula(p.y, rsym(p.group))}, data = d)`,
         cmp,
-        `pb_result_htest_groups(test, cmp, d, ${rstr(p.y)}, ${rstr(p.group)}, "Kruskal-Wallis test", "Dunn's multiple comparisons", estimate_name = "Mean rank difference")`];
+        `ag_result_htest_groups(test, cmp, d, ${rstr(p.y)}, ${rstr(p.group)}, "Kruskal-Wallis test", "Dunn's multiple comparisons", estimate_name = "Mean rank difference")`];
     },
   },
   rm_anova: {
@@ -341,7 +341,7 @@ export const TESTS = {
         nlme ? `fit <- nlme::lme(${formula(p.y, rsym(p.group))}, random = ~ 1 | ${rsym(p.subject)}, data = d)`
           : `fit <- lmerTest::lmer(${formula(p.y, `${rsym(p.group)} + (1 | ${rsym(p.subject)})`)}, data = d)`,
         ...e.lines,
-        `pb_result_mixed(fit, ${e.mc}, d, ${rstr(p.y)}, ${rstr(p.group)}, "Repeated-measures ANOVA (mixed-effects model)"${e.name ? `, ${rstr(e.name)}` : ''})`];
+        `ag_result_mixed(fit, ${e.mc}, d, ${rstr(p.y)}, ${rstr(p.group)}, "Repeated-measures ANOVA (mixed-effects model)"${e.name ? `, ${rstr(e.name)}` : ''})`];
     },
   },
   friedman: {
@@ -355,8 +355,8 @@ export const TESTS = {
       const p = prepareGroups(a, ctx, { subject: true });
       return [...p.lines,
         `test <- friedman.test(${formula(p.y, `${rsym(p.group)} | ${rsym(p.subject)}`)}, data = d)`,
-        `cmp <- pb_pairwise_wilcox_paired(d, ${rstr(p.y)}, ${rstr(p.group)}, ${rstr(p.subject)}, adjust = ${rstr(a.options?.padjust || 'holm')})`,
-        `pb_result_htest_groups(test, cmp, d, ${rstr(p.y)}, ${rstr(p.group)}, "Friedman test", "Wilcoxon matched-pairs comparisons", estimate_name = "Difference")`];
+        `cmp <- ag_pairwise_wilcox_paired(d, ${rstr(p.y)}, ${rstr(p.group)}, ${rstr(p.subject)}, adjust = ${rstr(a.options?.padjust || 'holm')})`,
+        `ag_result_htest_groups(test, cmp, d, ${rstr(p.y)}, ${rstr(p.group)}, "Friedman test", "Wilcoxon matched-pairs comparisons", estimate_name = "Difference")`];
     },
   },
 
@@ -381,7 +381,7 @@ export const TESTS = {
       if (a.group === a.factorB) throw new Error('Factor A and factor B must be different columns.');
       const o = { interaction: true, sstype: 'III', scope: 'A_within_B', compare: 'pairs', correction: 'sidak', ...(a.options || {}) };
       const A = rsym(a.group); const B = rsym(a.factorB);
-      const lines = [`d <- ${ctx.rnameOf(a.dataset)} |>\n    ${filterNA([a.y, a.group, a.factorB])} |>\n    mutate(${A} = pb_factor(${A}), ${B} = pb_factor(${B}))`];
+      const lines = [`d <- ${ctx.rnameOf(a.dataset)} |>\n    ${filterNA([a.y, a.group, a.factorB])} |>\n    mutate(${A} = ag_factor(${A}), ${B} = ag_factor(${B}))`];
       const rhs = o.interaction ? `${A} * ${B}` : `${A} + ${B}`;
       const contr = o.sstype === 'III' ? `, contrasts = list(${A} = contr.sum, ${B} = contr.sum)` : '';
       lines.push(`fit <- lm(${formula(a.y, rhs)}, data = d${contr})`);
@@ -389,7 +389,7 @@ export const TESTS = {
       const compared = { A_within_B: a.group, A: a.group, B_within_A: a.factorB, B: a.factorB }[o.scope];
       const e = o.scope === 'none' ? { lines: [], mc: 'NULL', name: null } : emmLines('fit', specs[o.scope], o.scope === 'cells' ? { ...o, compare: 'pairs' } : o, '', compared);
       lines.push(...e.lines);
-      lines.push(`pb_result_anova2(fit, ${e.mc}, d, ${rstr(a.y)}, ${rvec([a.group, a.factorB].map(rstr))}, type = ${rstr(o.sstype)}${e.name ? `, posthoc = ${rstr(e.name)}` : ''})`);
+      lines.push(`ag_result_anova2(fit, ${e.mc}, d, ${rstr(a.y)}, ${rvec([a.group, a.factorB].map(rstr))}, type = ${rstr(o.sstype)}${e.name ? `, posthoc = ${rstr(e.name)}` : ''})`);
       return lines;
     },
   },
@@ -415,7 +415,7 @@ export const TESTS = {
       const o = { interaction: true, compare: 'pairs', correction: 'tukey', ...(a.options || {}) };
       const all = [...new Set([a.y, ...fixed, ...random])];
       const factors = [...new Set([...fixed, ...random])];
-      const lines = [`d <- ${ctx.rnameOf(a.dataset)} |>\n    ${filterNA(all)} |>\n    mutate(${factors.map((f) => `${rsym(f)} = pb_factor(${rsym(f)})`).join(', ')})`];
+      const lines = [`d <- ${ctx.rnameOf(a.dataset)} |>\n    ${filterNA(all)} |>\n    mutate(${factors.map((f) => `${rsym(f)} = ag_factor(${rsym(f)})`).join(', ')})`];
       const nlme = ctx.mixedEngine === 'nlme';
       let y = a.y;
       if (nlme) {
@@ -439,7 +439,7 @@ export const TESTS = {
       const by = o.by && o.by !== target && fixed.includes(o.by) ? ` | ${rsym(o.by)}` : '';
       const e = emmLines('fit', `~ ${rsym(target)}${by}`, o, nlme ? '' : ', lmer.df = "satterthwaite"', target);
       lines.push(...e.lines);
-      lines.push(`pb_result_mixed(fit, ${e.mc}, d, ${rstr(y)}, ${rstr(target)}${e.name ? `, posthoc = ${rstr(e.name)}` : ''})`);
+      lines.push(`ag_result_mixed(fit, ${e.mc}, d, ${rstr(y)}, ${rstr(target)}${e.name ? `, posthoc = ${rstr(e.name)}` : ''})`);
       return lines;
     },
   },
@@ -458,7 +458,7 @@ export const TESTS = {
       const m = o.method || 'pearson';
       return [`d <- ${ctx.rnameOf(a.dataset)} |>\n    ${filterNA([a.x, a.y])}`,
         `test <- cor.test(d$${rsym(a.x)}, d$${rsym(a.y)}, method = ${rstr(m)}${m !== 'pearson' ? ', exact = FALSE' : ''}, alternative = ${rstr(o.alternative || 'two.sided')})`,
-        `pb_result_cor(test, d, ${rstr(a.x)}, ${rstr(a.y)}, ${rstr(m)})`];
+        `ag_result_cor(test, d, ${rstr(a.x)}, ${rstr(a.y)}, ${rstr(m)})`];
     },
   },
   regression: {
@@ -482,8 +482,8 @@ export const TESTS = {
       const X = rsym(a.x); const Y = rsym(a.y);
       const needPos = ['log', 'power'].includes(m) || (m === '4pl' && !o.logx);
       const lines = [`d <- ${ctx.rnameOf(a.dataset)} |>\n    ${filterNA([a.x, a.y])}${needPos ? ` |>\n    filter(${X} > 0)` : ''}${m === 'power' ? ` |>\n    filter(${Y} > 0)` : ''}`];
-      const lm = (rhs, model) => [`fit <- lm(${Y} ~ ${rhs}, data = d)`, `pb_result_lm(fit, d, ${rstr(a.x)}, ${rstr(a.y)}, model = ${rstr(model)})`];
-      const nls = (fit, model) => [fit, `pb_result_nls(fit, d, ${rstr(a.x)}, ${rstr(a.y)}, model = ${rstr(model)})`];
+      const lm = (rhs, model) => [`fit <- lm(${Y} ~ ${rhs}, data = d)`, `ag_result_lm(fit, d, ${rstr(a.x)}, ${rstr(a.y)}, model = ${rstr(model)})`];
+      const nls = (fit, model) => [fit, `ag_result_nls(fit, d, ${rstr(a.x)}, ${rstr(a.y)}, model = ${rstr(model)})`];
       switch (m) {
         case 'linear': return [...lines, ...lm(X, 'linear')];
         case 'origin': return [...lines, ...lm(`0 + ${X}`, 'origin')];
