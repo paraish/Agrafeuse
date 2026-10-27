@@ -54,18 +54,20 @@ function isWide(schema) {
   return cols.filter((c) => c.type === 'numeric').length >= 2 && !cols.some((c) => c.type !== 'numeric' && !/^row_name(_\d+)?$/.test(c.name));
 }
 
-// The project as a few lines of text.
-export function projectSummary(app, { shareValues = false, preview = null, compact = false } = {}) {
-  const p = app.store.project;
+// The project as a few lines of text. `project` can be a working copy with
+// items a plan has made so far (their columns are then predicted from their steps).
+export function projectSummary(app, { shareValues = false, preview = null, compact = false, project = null } = {}) {
+  const p = project || app.store.project;
   const engine = app.engine;
-  const open = app.store.item();
+  const open = getItem(p, app.store.selected);
   const name = (id) => getItem(p, id)?.name || '?';
+  const schemaOf = (id) => engine.schemaOf(id) || predictSchema(p, id, schemaOf);
   const lines = [`Project "${p.name}".${open ? ` Open now: ${open.kind === 'data' ? 'data table' : open.kind} "${open.name}".` : ''}`];
   const ds = p.items.filter((it) => it.kind === 'data' || it.kind === 'transform');
   if (ds.length) lines.push('Datasets:');
   for (const it of ds) {
-    const s = engine.schemaOf(it.id);
-    const rows = s?.nrow != null ? `${s.nrow} rows` : '';
+    const s = schemaOf(it.id);
+    const rows = s?.nrow != null ? `${s.nrow} rows` : s?.predicted ? 'just planned' : '';
     const kind = it.kind === 'data' ? 'data table' : `transform of "${name(it.input)}"`;
     const pipe = it.kind === 'data' && it.pipe?.steps?.length ? `; its pipeline has ${it.pipe.steps.length} step(s): ${it.pipe.steps.map((x) => x.type).join(', ')}` : '';
     const wide = isWide(s) ? ' One column per group: to compare or graph these groups, just name this dataset (the app reshapes it).' : '';
@@ -98,6 +100,50 @@ export function projectSummary(app, { shareValues = false, preview = null, compa
   return lines.join('\n');
 }
 
+// The columns a transform will have, worked out from its input and steps
+// (for datasets a plan makes before R has run them). Null when it cannot tell.
+export function predictSchema(project, id, schemaOf) {
+  const it = getItem(project, id);
+  if (!it || it.kind !== 'transform') return null;
+  const input = schemaOf(it.input);
+  if (!input?.columns) return null;
+  let cols = input.columns.map((c) => ({ ...c }));
+  let grouped = null;
+  const has = (n) => cols.some((c) => c.name === n);
+  for (const st of it.steps || []) {
+    if (st.disabled) continue;
+    switch (st.type) {
+      case 'pivot_longer': {
+        const stacked = new Set(st.cols || []);
+        cols = cols.filter((c) => !stacked.has(c.name));
+        cols.push({ name: st.names_to || 'group', type: 'factor', levels: [...(st.cols || [])] }, { name: st.values_to || 'value', type: 'numeric' });
+        break;
+      }
+      case 'mutate': if (st.name && !has(st.name)) cols.push({ name: st.name, type: 'numeric' }); break;
+      case 'rename': cols = cols.map((c) => (c.name === st.from ? { ...c, name: st.to } : c)); break;
+      case 'convert': cols = cols.map((c) => (c.name === st.column ? { ...c, type: st.to === 'numeric' ? 'numeric' : 'factor' } : c)); break;
+      case 'select': {
+        const set = new Set(st.columns || []);
+        cols = cols.filter((c) => (st.drop ? !set.has(c.name) : set.has(c.name)));
+        break;
+      }
+      case 'group_by': grouped = st.columns || null; break;
+      case 'ungroup': grouped = null; break;
+      case 'summarise': {
+        const by = grouped || st.group_by || [];
+        cols = [...cols.filter((c) => by.includes(c.name)), ...(st.stats || []).map((x) => ({ name: x, type: 'numeric' }))];
+        grouped = null;
+        break;
+      }
+      case 'count': cols = [...cols.filter((c) => (st.columns || []).includes(c.name) || (grouped || []).includes(c.name)), { name: 'n', type: 'numeric' }]; break;
+      case 'distinct': if (st.columns?.length && !st.keep_all) cols = cols.filter((c) => st.columns.includes(c.name)); break;
+      case 'pivot_wider': case 'transpose': return null;
+      default: // filter, arrange, slice, drop_na, reorder: the same columns
+    }
+  }
+  return { columns: cols, predicted: true };
+}
+
 // The dataset whose rows to show the model: the open one, or the one the open item uses.
 export function previewTarget(app) {
   const it = app.store.item();
@@ -108,28 +154,50 @@ export function previewTarget(app) {
   return null;
 }
 
-// Messages for the model: instructions + project, recent conversation, the new request.
-// history: [{ role: 'user' | 'assistant', content }]. budget: roughly how many tokens
-// the prompt may use (small in-browser models have small context windows); the
-// oldest turns are dropped to fit.
-export function buildMessages(app, history, request, opts = {}) {
-  const budget = opts.budget || 100000;
-  let sys = `${systemPrompt()}\n\n${projectSummary(app, opts)}`;
-  // A big project in a small model: a shorter description (fewer groups, no sample rows).
-  if (estimateTokens(sys) + estimateTokens(request) > budget - 300) sys = `${systemPrompt()}\n\n${projectSummary(app, { ...opts, compact: true })}`;
-  let past = history.slice(-6);
-  const size = () => estimateTokens(sys) + estimateTokens(request) + past.reduce((n, m) => n + estimateTokens(m.content), 0);
-  while (past.length && size() > budget) past = past.slice(2);
-  return [
-    { role: 'system', content: sys },
-    ...past,
-    { role: 'user', content: request },
-  ];
-}
-
 // About 3.5 characters per token for English and JSON.
 export function estimateTokens(text) {
   return Math.ceil(String(text || '').length / 3.5);
+}
+
+// ---- planning: think, then break the request into steps ------------------------------------------
+
+const PLAN_EXAMPLES = `Examples, for a table "Plates" with one column per group (Control (number), Drug (number)):
+User: compare control and drug, show it as a dot plot with the p value, and call the y axis "Colonies"
+{"thinking":"Two independent groups, one column each; the samples are small, so a Mann-Whitney test. The graph needs the comparison on it, then a Y title.","plan":["Run a Mann-Whitney test comparing Control and Drug in Plates","Make a scatter dot plot of Plates","Compare the groups on that graph with a Mann-Whitney test","Set the graph's Y axis title to \"Colonies\""],"reply":"I'll test Control against Drug and show it on a dot plot."}
+User: what is an SEM?
+{"thinking":"A question; nothing to do in the app.","plan":[],"reply":"The standard error of the mean: how precisely the mean is known (the SD divided by the square root of n)."}`;
+
+export function planPrompt() {
+  return `You are the assistant inside Agrafeuse, a point-and-click app for statistics and graphs (R, ggplot2, dplyr) that runs in the browser.
+The app can: reshape, filter and summarise data (dplyr steps in a table's pipeline, or a new dataset made from another), run statistical tests (t tests, Mann-Whitney, Wilcoxon, ANOVA, Welch's ANOVA, Kruskal-Wallis, repeated measures, Friedman, two-way ANOVA, mixed models, correlation, regression, descriptive statistics), make graphs (dot plots, bars with points, box, violin, grouped bars, lines over time, XY with a fit, histograms), add compared groups or an analysis's p values to a graph, add text boxes, and set titles, axes, colours and themes.
+First think about what the user wants and what their data allow. Then break the request into an ordered list of small steps, each one thing the app can do, in the order they must happen (data before the tests and graphs that use it; a graph before the p values or titles on it). Say in each step which dataset, columns and test or graph it uses, with names exactly as listed in the project.
+Answer with ONE JSON object and nothing else: {"thinking": "<one to three sentences>", "plan": ["<step 1>", "<step 2>", ...], "reply": "<short message for the user>"}
+If the user only asks a question, answer it in "reply" and leave "plan" empty. Use at most 8 steps.
+${PLAN_EXAMPLES}`;
+}
+
+// The planning call: what the user asked, with the project and recent conversation.
+export function planMessages(app, history, request, opts = {}) {
+  const budget = opts.budget || 100000;
+  let sys = `${planPrompt()}\n\n${projectSummary(app, opts)}`;
+  if (estimateTokens(sys) + estimateTokens(request) > budget - 300) sys = `${planPrompt()}\n\n${projectSummary(app, { ...opts, compact: true })}`;
+  let past = history.slice(-4);
+  const size = () => estimateTokens(sys) + estimateTokens(request) + past.reduce((n, m) => n + estimateTokens(m.content), 0);
+  while (past.length && size() > budget) past = past.slice(2);
+  return [{ role: 'system', content: sys }, ...past, { role: 'user', content: request }];
+}
+
+// One step of a plan: the actions for it, seeing the working copy (what earlier steps made).
+export function stepMessages(app, request, plan, k, done, opts = {}) {
+  const budget = opts.budget || 100000;
+  const content = `The user asked: "${request}"
+The plan:
+${plan.map((st, j) => `${j + 1}. ${st}`).join('\n')}
+Done so far: ${done.length ? done.join(' ') : 'nothing yet.'}
+Now give the actions for step ${k + 1} only: "${plan[k]}". Items made by earlier steps are listed in the project with their columns. Answer with the JSON object {"reply": "...", "actions": [...]}.`;
+  let sys = `${systemPrompt()}\n\n${projectSummary(app, opts)}`;
+  if (estimateTokens(sys) + estimateTokens(content) > budget - 300) sys = `${systemPrompt()}\n\n${projectSummary(app, { ...opts, compact: true })}`;
+  return [{ role: 'system', content: sys }, { role: 'user', content }];
 }
 
 // Asking again when some proposed actions cannot be done.

@@ -67,7 +67,7 @@ export class WebLLMBackend {
     });
   }
 
-  async chat(messages, { signal } = {}) {
+  async chat(messages, { signal, schema = REPLY_SCHEMA } = {}) {
     if (!this.engine) throw new Error('The model is not loaded.');
     const stop = () => this.engine.interruptGenerate();
     signal?.addEventListener('abort', stop);
@@ -77,7 +77,7 @@ export class WebLLMBackend {
         temperature: 0.2,
         max_tokens: 900,
         // Constrain the answer to the JSON shape the app reads.
-        response_format: { type: 'json_object', schema: JSON.stringify(REPLY_SCHEMA) },
+        response_format: { type: 'json_object', schema: JSON.stringify(schema) },
         // Qwen3 models "think" at length first unless told not to.
         ...(this.modelId.startsWith('Qwen3') ? { extra_body: { enable_thinking: false } } : {}),
       });
@@ -93,13 +93,25 @@ export class WebLLMBackend {
   }
 }
 
-const REPLY_SCHEMA = {
+// The shapes of the model's answers: actions for one step, or a plan.
+export const REPLY_SCHEMA = {
   type: 'object',
   properties: {
     reply: { type: 'string' },
     actions: { type: 'array', items: { type: 'object' } },
   },
   required: ['reply', 'actions'],
+};
+
+// "thinking" comes first so the model reasons before it lists the steps.
+export const PLAN_SCHEMA = {
+  type: 'object',
+  properties: {
+    thinking: { type: 'string' },
+    plan: { type: 'array', items: { type: 'string' } },
+    reply: { type: 'string' },
+  },
+  required: ['thinking', 'plan', 'reply'],
 };
 
 // ---- OpenAI-compatible servers --------------------------------------------------------------
@@ -141,11 +153,11 @@ export class OpenAIBackend {
     return (j.data || j.models || []).map((m) => m.id || m.name).filter(Boolean).sort();
   }
 
-  async chat(messages, { signal } = {}) {
+  async chat(messages, { signal, schema = REPLY_SCHEMA } = {}) {
     const body = { model: this.model, messages, temperature: 0.2, max_tokens: 1500 };
     // Ask for JSON in the reply's shape where the server can enforce it (LM Studio,
     // Ollama, OpenAI…); servers that cannot are asked again without it.
-    if (!this.noSchema) body.response_format = { type: 'json_schema', json_schema: { name: 'agrafeuse_reply', schema: REPLY_SCHEMA } };
+    if (!this.noSchema) body.response_format = { type: 'json_schema', json_schema: { name: schema === PLAN_SCHEMA ? 'agrafeuse_plan' : 'agrafeuse_reply', schema } };
     let res;
     try {
       res = await fetch(`${this.base}/chat/completions`, { method: 'POST', headers: this.headers(), signal, body: JSON.stringify(body) });
@@ -155,7 +167,7 @@ export class OpenAIBackend {
     const text = await res.text();
     if (!res.ok && body.response_format && res.status >= 400 && res.status < 500 && res.status !== 401 && res.status !== 403 && res.status !== 429) {
       this.noSchema = true;
-      return this.chat(messages, { signal });
+      return this.chat(messages, { signal, schema });
     }
     if (!res.ok) {
       let msg = text;

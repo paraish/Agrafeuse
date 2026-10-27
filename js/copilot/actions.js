@@ -307,10 +307,17 @@ function stepText(s) {
 
 class Skip extends Error {}
 
-// Tries the actions on a copy of the project: which would work, and why not.
-export function checkActions(app, actions) {
-  const ctx = { app, p: clone(app.store.project), made: {}, last: {}, show: null, dry: true };
-  return actions.map((a) => {
+// A working copy of the project for trying out a plan, step by step: later
+// steps see what earlier ones made (and the names they were given).
+export function rehearsal(app) {
+  return { p: clone(app.store.project), made: {}, last: {} };
+}
+
+// Tries actions on (a copy of) a rehearsal: which would work and why not, and
+// the working copy afterwards. The state passed in is left as it was.
+export function rehearse(app, state, actions) {
+  const ctx = { app, p: clone(state.p), made: { ...state.made }, last: { ...state.last }, show: null, dry: true };
+  const results = actions.map((a) => {
     try {
       const note = run(ctx, a);
       return { ok: true, note };
@@ -318,6 +325,29 @@ export function checkActions(app, actions) {
       return { ok: false, note: e instanceof Skip ? e.message : `Error: ${e.message}` };
     }
   });
+  return { results, state: { p: ctx.p, made: ctx.made, last: ctx.last } };
+}
+
+// Tries the actions on a copy of the project: which would work, and why not.
+export function checkActions(app, actions) {
+  return rehearse(app, rehearsal(app), actions).results;
+}
+
+// The model's plan: { thinking, plan: [step, …], reply }, or null when the answer is not a plan.
+export function parsePlan(text) {
+  const clean = String(text || '').replace(/<think>[\s\S]*?<\/think>/g, '').trim();
+  const start = clean.indexOf('{');
+  const end = clean.lastIndexOf('}');
+  if (start < 0 || end <= start) return null;
+  try {
+    const obj = JSON.parse(clean.slice(start, end + 1));
+    const raw = obj.plan ?? obj.steps;
+    if (!Array.isArray(raw)) return null;
+    const plan = raw.map((x) => (typeof x === 'string' ? x : x?.step ?? x?.text ?? x?.description ?? '')).map((x) => String(x).trim()).filter(Boolean).slice(0, 8);
+    return { thinking: String(obj.thinking ?? obj.reasoning ?? obj.thoughts ?? '').trim(), plan, reply: String(obj.reply ?? obj.answer ?? obj.message ?? '').trim() };
+  } catch {
+    return null;
+  }
 }
 
 // Runs the actions in order. Returns [{ text, ok, note }] and the item to show.

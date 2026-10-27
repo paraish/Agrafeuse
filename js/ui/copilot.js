@@ -4,9 +4,9 @@
 // the user reviews and applies; a batch of actions is one undo step.
 import { h, fill, icon, rebuild } from './dom.js';
 import { button, iconButton, select, input, checkbox, messageBox, toast } from './widgets.js';
-import { WEBLLM_MODELS, API_PRESETS, WebLLMBackend, OpenAIBackend, webgpuStatus, isLocalUrl } from '../copilot/llm.js';
-import { parseReply, describeAction, applyActions, checkActions } from '../copilot/actions.js';
-import { buildMessages, previewTarget, repairRequest } from '../copilot/prompt.js';
+import { WEBLLM_MODELS, API_PRESETS, PLAN_SCHEMA, WebLLMBackend, OpenAIBackend, webgpuStatus, isLocalUrl } from '../copilot/llm.js';
+import { parseReply, parsePlan, describeAction, applyActions, rehearsal, rehearse } from '../copilot/actions.js';
+import { planMessages, stepMessages, previewTarget, repairRequest } from '../copilot/prompt.js';
 import { getItem, datasets } from '../model.js';
 
 const SETTINGS_KEY = 'agrafeuse:assistant';
@@ -256,25 +256,55 @@ export class Copilot {
       return h('div.cp-msg.cp-error', icon('alert'), h('div', m.text,
         m.retry ? h('div', button('Try again', () => { this.messages.splice(i - 1, 2); this.ask(m.retry); }, { k: `cp-retry-${i}` })) : null));
     }
-    // assistant
-    const plan = m.actions?.length ? h('div.cp-plan',
-      h('div.cp-plan-head', m.status === 'applied' ? 'Done:' : m.status === 'undone' ? 'Undone:' : m.status === 'dismissed' ? 'Not applied:' : `Proposed ${m.actions.length === 1 ? 'step' : 'steps'}:`),
-      h('ol', m.actions.map((a, j) => {
-        const r = m.results?.[j];
-        const off = m.skip?.has(j);
-        return h('li', { class: [r ? (r.ok ? 'ok' : 'bad') : '', off ? 'off' : ''].join(' ') },
-          m.status === 'proposed' ? h('input', { type: 'checkbox', checked: !off, 'aria-label': 'Include this step', 'data-k': `cp-step-${i}-${j}`, onchange: (e) => { m.skip = m.skip || new Set(); if (e.target.checked) m.skip.delete(j); else m.skip.add(j); } })
-            : r ? icon(r.ok ? 'check' : 'alert', 14) : null,
-          h('span', describeAction(a), r?.note ? h('span.cp-note', ` ${r.note}`) : null,
-            m.status === 'proposed' && m.checks?.[j] && !m.checks[j].ok ? h('span.cp-note.cp-wont', ` Won't work: ${m.checks[j].note}`) : null,
-            m.status === 'proposed' && m.checks?.[j]?.ok && m.checks[j].note ? h('span.cp-note', ` ${m.checks[j].note}`) : null));
-      })),
-      m.status === 'proposed' ? h('div.cp-row',
-        button('Apply', () => this.apply(m), { kind: 'primary', iconName: 'check', k: `cp-apply-${i}` }),
+    // assistant: its thinking, then the plan (steps, each with its actions) or a list of actions
+    const head = {
+      working: `Working on step ${(m.steps || []).findIndex((st) => ['working', 'fixing'].includes(st.status)) + 1} of ${m.steps?.length}…`,
+      applied: 'Done:', undone: 'Undone:', dismissed: 'Not applied:',
+    }[m.status] || (m.steps ? `Plan (${m.steps.length} ${m.steps.length === 1 ? 'step' : 'steps'}):` : `Proposed ${m.actions?.length === 1 ? 'step' : 'steps'}:`);
+    const body = m.steps ? this.stepsView(m, i) : m.actions?.length ? h('ol', m.actions.map((_, j) => this.actionItem(m, i, j))) : null;
+    const plan = body ? h('div.cp-plan',
+      h('div.cp-plan-head', head),
+      body,
+      m.status === 'proposed' && m.actions.length ? h('div.cp-row',
+        button(`Apply${m.actions.length > 1 ? ` ${m.actions.length - (m.skip?.size || 0)} actions` : ''}`, () => this.apply(m), { kind: 'primary', iconName: 'check', k: `cp-apply-${i}` }),
         button('Dismiss', () => { m.status = 'dismissed'; this.render(); }, { k: `cp-dismiss-${i}` })) : null,
       m.status === 'applied' ? h('div.cp-row', button('Undo', () => { this.app.store.undo(); m.status = 'undone'; this.render(); }, { iconName: 'undo', k: `cp-undo-${i}` })) : null) : null;
-    return h('div.cp-msg.cp-bot', m.reply ? h('div.cp-reply', m.reply) : null, plan,
+    return h('div.cp-msg.cp-bot',
+      m.thinking ? h('div.cp-thinking', h('b', 'Thinking: '), m.thinking) : null,
+      m.reply ? h('div.cp-reply', m.reply) : null,
+      plan,
       m.raw ? h('details.cp-raw', h('summary', 'What the model wrote'), h('pre', m.raw)) : null);
+  }
+
+  // The plan, step by step, with each step's actions under it.
+  stepsView(m, i) {
+    const mark = (st) => ({
+      waiting: h('span.cp-st-wait'), working: h('span.cp-dots'), fixing: h('span.cp-dots'),
+      done: icon('check', 14), partly: icon('alert', 14), empty: icon('info', 14), failed: icon('alert', 14), stopped: icon('stop', 14),
+    }[st.status]);
+    const note = (st) => ({
+      fixing: ' (fixing what would not work…)', empty: ' (nothing to do for this step)', stopped: ' (stopped)',
+    }[st.status] || '');
+    return h('ol.cp-steps', m.steps.map((st, k) => h('li.cp-step', { class: st.status },
+      h('div.cp-step-head', mark(st), h('span', h('b', `${k + 1}. `), st.text, h('span.cp-note', note(st)),
+        st.error ? h('span.cp-note.cp-wont', ` ${st.error}`) : null)),
+      h('ul.cp-acts', m.actions.map((_, j) => (m.stepOf[j] === k ? this.actionItem(m, i, j) : null))))));
+  }
+
+  // One action: a tick box while proposed, then whether it worked.
+  actionItem(m, i, j) {
+    const a = m.actions[j];
+    const r = m.results?.[j];
+    const off = m.skip?.has(j);
+    const check = m.checks?.[j];
+    return h('li', { class: [r ? (r.ok ? 'ok' : 'bad') : '', off ? 'off' : ''].join(' ') },
+      m.status === 'proposed' ? h('input', {
+        type: 'checkbox', checked: !off, 'aria-label': 'Include this action', 'data-k': `cp-step-${i}-${j}`,
+        onchange: (e) => { m.skip = m.skip || new Set(); if (e.target.checked) m.skip.delete(j); else m.skip.add(j); this.render(); },
+      }) : r ? icon(r.ok ? 'check' : 'alert', 14) : null,
+      h('span', describeAction(a), r?.note ? h('span.cp-note', ` ${r.note}`) : null,
+        m.status === 'proposed' && check && !check.ok ? h('span.cp-note.cp-wont', ` Won't work: ${check.note}`) : null,
+        m.status === 'proposed' && check?.ok && check.note ? h('span.cp-note', ` ${check.note}`) : null));
   }
 
   // What was said before, for context (actions as the model wrote them).
@@ -282,7 +312,7 @@ export class Copilot {
     const out = [];
     for (const m of this.messages) {
       if (m.role === 'user') out.push({ role: 'user', content: m.text });
-      else if (m.role === 'assistant') out.push({ role: 'assistant', content: JSON.stringify({ reply: m.reply, actions: m.actions || [] }) });
+      else if (m.role === 'assistant') out.push({ role: 'assistant', content: JSON.stringify({ reply: m.reply, ...(m.steps ? { plan: m.steps.map((st) => st.text) } : {}), actions: m.actions || [] }) });
     }
     return out;
   }
@@ -295,6 +325,10 @@ export class Copilot {
     this.ask(text);
   }
 
+  // Asking: the model first thinks and breaks the request into steps; then, step
+  // by step, it gives the actions for each one, which are tried on a working
+  // copy of the project (so later steps can use what earlier ones make). A
+  // question gets an answer straight away.
   async ask(text) {
     const history = this.history();
     this.messages.push({ role: 'user', text });
@@ -308,51 +342,91 @@ export class Copilot {
       const el = this.el.querySelector('.cp-pending');
       if (el) el.lastChild.textContent = `${pending.text} ${Math.round((Date.now() - started) / 1000)} s`;
     }, 1000);
+    let m = null;
     try {
       await this.ensureBackend(pending);
       pending.text = 'Thinking…';
-      const engine = this.app.engine;
-      // Every dataset's columns, so the model sees them (transforms are known only once they have run).
-      if (engine.state === 'ready') {
-        await Promise.all(datasets(this.app.store.project).filter((d) => !engine.schemaOf(d.id)).map((d) => engine.ensure(d.id).catch(() => null)));
+      const opts = await this.context();
+      const signal = this.abort.signal;
+      const planRaw = await this.backend.chat(planMessages(this.app, history, text, opts), { signal, schema: PLAN_SCHEMA });
+      const planned = parsePlan(planRaw);
+      this.messages.splice(this.messages.indexOf(pending), 1);
+      if (!planned) {
+        // Not a plan: perhaps the model went straight to actions.
+        const parsed = parseReply(planRaw);
+        m = { role: 'assistant', reply: parsed.reply || (parsed.actions.length ? '' : '(no answer)'), actions: parsed.actions, raw: planRaw };
+        if (parsed.actions.length) {
+          const tried = rehearse(this.app, rehearsal(this.app), parsed.actions);
+          Object.assign(m, { checks: tried.results, status: 'proposed' });
+          m.skip = new Set(m.checks.map((c, j) => (c.ok ? -1 : j)).filter((j) => j >= 0));
+        }
+        this.messages.push(m);
+        return;
       }
-      let preview = null;
-      const ds = this.share ? previewTarget(this.app) : null;
-      if (ds && engine.state === 'ready') {
-        const res = await engine.preview(ds, 15).catch(() => null);
-        if (res?.ok) preview = { name: getItem(this.app.store.project, ds)?.name, table: res.table };
+      m = {
+        role: 'assistant', reply: planned.reply, thinking: planned.thinking, raw: planRaw,
+        steps: planned.plan.map((t) => ({ text: t, status: 'waiting' })), actions: [], stepOf: [], checks: [],
+        status: planned.plan.length ? 'working' : null,
+      };
+      if (!planned.plan.length) {
+        if (!m.reply) m.reply = '(no answer)';
+        delete m.steps;
+        this.messages.push(m);
+        return;
       }
-      const budget = this.backend.kind === 'webllm' ? 2900 : 24000;
-      const messages = buildMessages(this.app, history, text, { shareValues: this.share, preview, budget });
-      const raw = await this.backend.chat(messages, { signal: this.abort.signal });
-      let parsed = parseReply(raw);
-      let checks = checkActions(this.app, parsed.actions);
-      // Steps that would not work go back to the model once, with the reasons.
-      const failing = (c) => c.filter((x) => !x.ok).length;
-      if (failing(checks)) {
-        pending.text = 'Checking its plan…';
+      this.messages.push(m);
+      this.render();
+      let state = rehearsal(this.app);
+      const done = [];
+      const failing = (rs) => rs.filter((r) => !r.ok).length;
+      for (let k = 0; k < m.steps.length; k++) {
+        const step = m.steps[k];
+        step.status = 'working';
         this.render();
-        const problems = checks.map((c, index) => ({ ...c, index, do: parsed.actions[index].do, why: c.note })).filter((c) => !c.ok);
-        const retry = [messages[0], { role: 'user', content: text }, { role: 'assistant', content: raw }, { role: 'user', content: repairRequest(problems) }];
+        let raw;
+        let parsed;
+        let tried;
         try {
-          const raw2 = await this.backend.chat(retry, { signal: this.abort.signal });
-          const p2 = parseReply(raw2);
-          const c2 = checkActions(this.app, p2.actions);
-          if (p2.actions.length && failing(c2) < failing(checks)) { parsed = p2; checks = c2; }
+          const msgs = stepMessages(this.app, text, planned.plan, k, done, { ...opts, preview: null, project: state.p });
+          raw = await this.backend.chat(msgs, { signal });
+          parsed = parseReply(raw);
+          tried = rehearse(this.app, state, parsed.actions);
+          if (failing(tried.results)) {
+            // What would not work goes back to the model once, with the reasons.
+            step.status = 'fixing';
+            this.render();
+            const problems = tried.results.map((r, index) => ({ ...r, index, do: parsed.actions[index].do, why: r.note })).filter((r) => !r.ok);
+            const raw2 = await this.backend.chat([...msgs, { role: 'assistant', content: raw }, { role: 'user', content: repairRequest(problems) }], { signal });
+            const p2 = parseReply(raw2);
+            const t2 = rehearse(this.app, state, p2.actions);
+            if (p2.actions.length && failing(t2.results) < failing(tried.results)) { parsed = p2; tried = t2; raw = raw2; }
+          }
         } catch (e) {
           if (e.name === 'AbortError') throw e;
+          step.status = 'failed';
+          step.error = e.message || String(e);
+          this.render();
+          continue;
         }
+        const made = tried.state.p.items.filter((it) => !state.p.items.some((o) => o.id === it.id));
+        state = tried.state;
+        parsed.actions.forEach((a, j) => { m.actions.push(a); m.stepOf.push(k); m.checks.push(tried.results[j]); });
+        step.status = !parsed.actions.length ? 'empty' : failing(tried.results) ? 'partly' : 'done';
+        m.raw += `\n\n— step ${k + 1} —\n${raw}`;
+        done.push(`Step ${k + 1}: ${parsed.actions.map(describeAction).join('; ') || 'nothing'}${made.length ? ` (made ${made.map((it) => `the ${it.kind === 'transform' ? 'dataset' : it.kind} "${it.name}"`).join(', ')})` : ''}.`);
+        this.render();
       }
-      this.messages.splice(this.messages.indexOf(pending), 1);
-      // Steps that still would not work are shown, unticked, with the reason.
-      const skip = new Set(checks.map((c, j) => (c.ok ? -1 : j)).filter((j) => j >= 0));
-      this.messages.push({
-        role: 'assistant', reply: parsed.reply || (parsed.actions.length ? '' : '(no answer)'), actions: parsed.actions,
-        checks, skip, status: parsed.actions.length ? 'proposed' : null, raw,
-      });
+      this.finishPlan(m);
     } catch (e) {
-      this.messages.splice(this.messages.indexOf(pending), 1);
-      this.messages.push(e.name === 'AbortError' ? { role: 'error', text: 'Stopped.' } : { role: 'error', text: e.message || String(e), retry: text });
+      const i = this.messages.indexOf(pending);
+      if (i >= 0) this.messages.splice(i, 1);
+      if (e.name === 'AbortError' && m?.steps) {
+        // Keep what was planned so far.
+        m.steps.forEach((st) => { if (['waiting', 'working', 'fixing'].includes(st.status)) st.status = 'stopped'; });
+        this.finishPlan(m);
+      } else if (!m || !m.steps) {
+        this.messages.push(e.name === 'AbortError' ? { role: 'error', text: 'Stopped.' } : { role: 'error', text: e.message || String(e), retry: text });
+      }
     } finally {
       clearInterval(tick);
       this.busy = false;
@@ -360,6 +434,27 @@ export class Copilot {
       this.render();
       this.el.querySelector('.cp-input')?.focus();
     }
+  }
+
+  finishPlan(m) {
+    m.skip = new Set(m.checks.map((c, j) => (c.ok ? -1 : j)).filter((j) => j >= 0));
+    m.status = m.actions.length ? 'proposed' : null;
+  }
+
+  // What the model is told about the project: every dataset's columns (transforms
+  // are run first), and with permission, the first rows of the dataset in view.
+  async context() {
+    const engine = this.app.engine;
+    if (engine.state === 'ready') {
+      await Promise.all(datasets(this.app.store.project).filter((d) => !engine.schemaOf(d.id)).map((d) => engine.ensure(d.id).catch(() => null)));
+    }
+    let preview = null;
+    const ds = this.share ? previewTarget(this.app) : null;
+    if (ds && engine.state === 'ready') {
+      const res = await engine.preview(ds, 15).catch(() => null);
+      if (res?.ok) preview = { name: getItem(this.app.store.project, ds)?.name, table: res.table };
+    }
+    return { shareValues: this.share, preview, budget: this.backend.kind === 'webllm' ? 2900 : 24000 };
   }
 
   // The model, started on first use (an in-browser model the user already downloaded loads from the cache).

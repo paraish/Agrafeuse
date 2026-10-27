@@ -382,13 +382,15 @@ try {
   await page.waitForSelector('.cp-bot');
   check(/one-way ANOVA/.test(await page.textContent('.cp-bot')), 'assistant answers a question (OpenAI-compatible server)');
   const sys = mock.state.last.messages[0].content;
-  check(sys.includes('"Plant growth (long)"') && sys.includes('weight (number)') && sys.includes('"do":"new_graph"'), 'the model is told the project and the actions');
+  check(sys.includes('"Plant growth (long)"') && sys.includes('weight (number)') && sys.includes('break the request into an ordered list'), 'a question is planned with the project in view, and answered directly');
   check(sys.includes('First rows of'), 'with permission (a server on this computer), it also sees data values');
   const navBefore2 = await page.locator('.nav li[data-id]').count();
   await page.fill('[data-k="cp-input"]', 'Make a bar graph of weight and compare the groups');
   await page.press('[data-k="cp-input"]', 'Enter');
   await page.waitForSelector('.cp-plan button:has-text("Apply")');
-  check(await page.locator('.cp-plan li').count() === 4 && await page.locator('.nav li[data-id]').count() === navBefore2, 'the assistant proposes steps and changes nothing yet');
+  check(await page.locator('.cp-acts li').count() === 4 && await page.locator('.nav li[data-id]').count() === navBefore2, 'the assistant proposes steps and changes nothing yet');
+  check(mock.state.last.messages[0].content.includes('"do":"new_graph"') && /Now give the actions for step 1 only/.test(mock.state.last.messages[1].content),
+    'each step of the plan is asked for with the actions it can use');
   await page.click('.cp-plan button:has-text("Apply")');
   await settle();
   const made = await page.evaluate(() => window.agrafeuse.engine.result(window.agrafeuse.store.selected)?.code || '');
@@ -421,7 +423,34 @@ try {
     'a table with one column per group is analysed and graphed without reshaping by hand');
   const calls = mock.state.count;
   r = await askAndApply('ANOVA of mass by group');
-  check(mock.state.count === calls + 2 && r.wont === 0 && r.ok === 1, 'a step that cannot work goes back to the model, which fixes it');
+  check(mock.state.count === calls + 3 && r.wont === 0 && r.ok === 1, 'a step that cannot work goes back to the model, which fixes it');
+
+  // A request with several parts: thought through, broken into steps, each step done in order on a working copy.
+  const calls2 = mock.state.count;
+  const navBefore3 = await page.locator('.nav li[data-id]').count();
+  await page.fill('[data-k="cp-input"]', 'multi: reshape Plant growth, test it, graph it with the p values and a title');
+  await page.press('[data-k="cp-input"]', 'Enter');
+  await page.waitForFunction(() => document.querySelector('.cp-bot:last-of-type button')?.textContent.includes('Apply')
+    || [...document.querySelectorAll('.cp-bot')].pop()?.querySelector('button')?.textContent.includes('Apply'));
+  const multi = page.locator('.cp-bot').last();
+  check(await multi.locator('.cp-thinking').count() === 1 && await multi.locator('.cp-step').count() === 5
+    && await multi.locator('.cp-step.done').count() === 4 && await multi.locator('.cp-step.empty').count() === 1,
+  'a request is thought through and broken into steps');
+  check(mock.state.count - calls2 === 6, `one call to plan, then one per step (${mock.state.count - calls2} calls)`);
+  const step3 = mock.state.log.find((j) => /step 3 only/.test(j.messages[1]?.content || ''));
+  check(step3 && step3.messages[0].content.includes('"Plants long"') && step3.messages[0].content.includes('mass (number)')
+    && step3.messages[0].content.includes('treatment (groups: Control, Treatment 1, Treatment 2)') && /Step 1: Make a new dataset "Plants long"/.test(step3.messages[1].content),
+  'later steps see what earlier steps made, with its columns');
+  check(await multi.locator('.cp-wont').count() === 0 && await page.locator('.nav li[data-id]').count() === navBefore3, 'the whole plan checks out, and nothing is changed yet');
+  await multi.locator('button:has-text("Apply")').click();
+  await settle();
+  const multiCode = await page.evaluate(() => window.agrafeuse.engine.result(window.agrafeuse.store.selected)?.code || '');
+  check(await page.inputValue('.title-input') === 'Mass box plot' && multiCode.includes('ag_brackets(mass_test, plants_long, x = "treatment", y = "mass")')
+    && multiCode.includes('labs(title = "Plant mass")') && await page.locator('.nav li[data-id]').count() === navBefore3 + 3,
+  'applied in order: a new dataset, a test on it, a graph with its p values and a title');
+  await multi.locator('button:has-text("Undo")').click();
+  await page.waitForTimeout(300);
+  check(await page.locator('.nav li[data-id]').count() === navBefore3, 'one undo takes back the whole plan');
   await page.uncheck('[data-k="cp-share"]');
   await page.fill('[data-k="cp-input"]', 'Which test should I use?');
   await page.press('[data-k="cp-input"]', 'Enter');
