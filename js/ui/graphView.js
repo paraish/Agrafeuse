@@ -8,7 +8,7 @@ import {
 import { itemHeader, warningsBox } from './common.js';
 import {
   GEOMS, GEOM_CATEGORIES, AES, PLOT_AES, SHAPES, LINETYPES, THEMES, PALETTES, NUMBER_FORMATS, FONTS,
-  geomDefaults, boldTitles, ensureBase, effectiveLayers,
+  COMPARE_TESTS, NOTE_DEFAULTS, geomDefaults, boldTitles, ensureBase, effectiveLayers, sideBySide,
 } from '../codegen/graph.js';
 import { TESTS } from '../codegen/stats.js';
 import { datasets, itemsOf, getItem, depsOf, clone } from '../model.js';
@@ -59,6 +59,7 @@ export class GraphView {
   render() {
     rebuild(this.left, () => this.controls());
     this.renderFormat();
+    this.placeNoteHandles();
   }
 
   schema(id) {
@@ -77,7 +78,8 @@ export class GraphView {
         ...g.layers.map((l, i) => this.layerCard(l, i)),
         h('div.add-row', button('Add layer', () => this.addLayer(), { iconName: 'plus', kind: 'primary', k: 'add-layer' })),
       ], { k: 'layers', sub: `${g.layers.length}` }),
-      section('Statistics on the graph', this.annotations(), { k: 'stats' }),
+      section('Statistics on the graph', this.annotations(), { k: 'stats', sub: g.annotations?.length ? String(g.annotations.length) : '' }),
+      section('Text boxes', this.notes(), { k: 'notes', sub: g.notes?.length ? String(g.notes.length) : '' }),
       section('Custom ggplot2 code', this.customCode(), { k: 'custom', open: !!g.custom }),
       h('div.hint', 'Titles, axes, fonts, colours and layout are under the graph.'));
   }
@@ -286,64 +288,227 @@ export class GraphView {
 
   annotations() {
     const g = this.item;
+    g.annotations = g.annotations || [];
     const analyses = itemsOf(this.app.store.project, 'analysis');
     const usable = analyses.filter((a) => (TESTS[a.test]?.annotations || []).length);
-    if (!usable.length) {
-      return [h('div.hint', 'Show p values, fitted curves or test results from an analysis on this graph. First run an analysis on this data.'),
-        button('New analysis…', () => this.app.newAnalysisDialog(g.base?.dataset || g.layers.find((l) => l.dataset)?.dataset), { iconName: 'stats' })];
-    }
-    const cards = (g.annotations || []).map((ann, i) => {
-      const an = getItem(this.app.store.project, ann.analysis);
-      const kinds = (TESTS[an?.test]?.annotations || []);
-      const k = (s) => `ann${i}-${s}`;
-      const ch = (structural) => () => this.changed(structural);
-      let opts = [];
-      if (ann.kind === 'brackets') {
-        opts = [
-          h('div.param', h('label', 'Show'), bindSelect(ann, 'format', [['stars', 'Stars (*, **, ns)'], ['p', 'p = 0.0123'], ['number', '0.0123']], ch(), { k: k('fmt') })),
-          h('div.param', bindCheck(ann, 'hide_ns', 'Hide non-significant (ns)', ch(), { k: k('ns') })),
-          h('div.param', h('label', 'Start height (blank = automatic)'), bindInput(ann, 'y_start', ch(), { type: 'number', k: k('y0'), width: '80px' })),
-          h('div.param', h('label', 'Spacing'), bindInput(ann, 'step', ch(), { type: 'number', step: 0.01, k: k('step'), width: '80px', placeholder: '0.09' })),
-          h('div.param', h('label', 'Text size'), bindInput(ann, 'text_size', ch(), { type: 'number', step: 0.5, k: k('ts'), width: '80px', placeholder: '4.5' })),
-        ];
-      } else if (ann.kind === 'label') {
-        opts = [
-          h('div.param', h('label', 'Position'), bindSelect(ann, 'position', [['top-left', 'Top left'], ['top-right', 'Top right'], ['bottom-left', 'Bottom left'], ['bottom-right', 'Bottom right']], ch(), { k: k('pos') })),
-          h('div.param', h('label', 'Text size'), bindInput(ann, 'text_size', ch(), { type: 'number', step: 0.5, k: k('ts'), width: '80px', placeholder: '4.2' })),
-        ];
-      } else if (ann.kind === 'curve') {
-        opts = [
-          h('div.param', h('label', 'Colour'), colour(ann.colour || '#000000', (v) => { ann.colour = v; this.changed(); }, { k: k('col') })),
-          h('div.param', bindCheck({ band: ann.band !== false }, 'band', 'Show 95% confidence band (straight lines and polynomials)', (v) => { ann.band = v; this.changed(); }, { k: k('band') })),
-        ];
-      }
-      return h('div.card.ann',
-        h('div.card-head',
-          select(ann.analysis, usable.map((a) => [a.id, a.name]), (v) => {
-            ann.analysis = v;
-            const ks = TESTS[getItem(this.app.store.project, v).test].annotations;
-            if (!ks.includes(ann.kind)) ann.kind = ks[0];
-            this.changed(true);
-          }, { k: k('an') }),
-          select(ann.kind, kinds.map((x) => [x, ANN_KINDS[x]]), (v) => { ann.kind = v; this.changed(true); }, { k: k('kind') }),
-          h('span.grow'),
-          iconButton('trash', 'Remove', () => { g.annotations.splice(i, 1); this.changed(true); })),
-        h('div.card-body.params', opts));
-    });
+    const cards = g.annotations.map((ann, i) => (ann.kind === 'compare' ? this.compareCard(ann, i) : this.analysisCard(ann, i, usable)));
     return [
+      cards.length ? null : h('div.hint', 'Put p values on the graph: compare its groups right here (t tests or Mann-Whitney tests, with brackets), or draw the results of an analysis (brackets, result text, fitted curves).'),
       ...cards,
-      h('div.add-row', button('Add statistics', () => {
-        // Prefer an analysis of the data this graph shows (or of the table it came from).
-        const p = this.app.store.project;
-        const shown = new Set(effectiveLayers(g).map((l) => l.dataset).filter(Boolean));
-        for (const id of [...shown]) { const src = getItem(p, id); if (src?.kind === 'transform') shown.add(src.input); }
-        const a = [...usable].reverse().find((x) => shown.has(x.dataset)) || usable[usable.length - 1];
-        g.annotations = g.annotations || [];
-        g.annotations.push({ id: `a${Date.now().toString(36)}`, analysis: a.id, kind: TESTS[a.test].annotations[0], format: 'stars', position: 'top-left' });
-        this.changed(true);
-      }, { iconName: 'plus', k: 'add-ann' })),
-      h('div.hint', 'Brackets are drawn between groups on the X axis of the first layer. For two-way designs, put the "within" factor on X and split groups side by side (dodge) by the compared factor.'),
+      h('div.add-row',
+        button('Compare groups', () => this.addCompare(), { iconName: 'plus', kind: 'primary', k: 'add-compare', title: "Tests between the graph's groups, drawn as brackets" }),
+        usable.length
+          ? button('From an analysis', () => this.addAnalysisAnnotation(usable), { iconName: 'stats', k: 'add-ann' })
+          : button('New analysis…', () => this.app.newAnalysisDialog(g.base?.dataset || g.layers.find((l) => l.dataset)?.dataset), { iconName: 'stats', k: 'new-ann-analysis' })),
+      cards.length ? h('div.hint', 'Brackets go between the groups on the X axis of the first layer. For side-by-side groups (dodge), compare them within each X group.') : null,
     ];
+  }
+
+  addCompare() {
+    const g = this.item;
+    const main = this.mainLayer();
+    // Side-by-side groups (a split by fill or colour, dodged): compare those within each X group.
+    const within = !!sideBySide(main) && g.layers.some((l) => l.params?.dodge);
+    g.annotations.push({ id: `a${Date.now().toString(36)}`, kind: 'compare', method: 't.test', comparisons: 'all', p_adjust: 'holm', format: 'stars', overall: !within, position: 'top-left', within });
+    this.changed(true);
+  }
+
+  addAnalysisAnnotation(usable) {
+    // Prefer an analysis of the data this graph shows (or of the table it came from).
+    const g = this.item;
+    const p = this.app.store.project;
+    const shown = new Set(effectiveLayers(g).map((l) => l.dataset).filter(Boolean));
+    for (const id of [...shown]) { const src = getItem(p, id); if (src?.kind === 'transform') shown.add(src.input); }
+    const a = [...usable].reverse().find((x) => shown.has(x.dataset)) || usable[usable.length - 1];
+    g.annotations.push({ id: `a${Date.now().toString(36)}`, analysis: a.id, kind: TESTS[a.test].annotations[0], format: 'stars', position: 'top-left' });
+    this.changed(true);
+  }
+
+  bracketParams(ann, k, ch) {
+    const more = ann.y_start !== '' && ann.y_start != null || (ann.step !== '' && ann.step != null) || !!ann.text_size;
+    return [
+      h('div.param', h('label', 'Show'), bindSelect(ann, 'format', [['stars', 'Stars (*, **, ns)'], ['p', 'p = 0.0123'], ['number', '0.0123']], ch(), { k: k('fmt') })),
+      h('div.param', bindCheck(ann, 'hide_ns', 'Hide non-significant (ns)', ch(), { k: k('ns') })),
+      h('details.more', { open: more },
+        h('summary', 'Bracket height, spacing and text size'),
+        h('div.param', h('label', 'Start height (blank = automatic)'), bindInput(ann, 'y_start', ch(), { type: 'number', k: k('y0'), width: '80px' })),
+        h('div.param', h('label', 'Spacing'), bindInput(ann, 'step', ch(), { type: 'number', step: 0.01, k: k('step'), width: '80px', placeholder: '0.09' })),
+        h('div.param', h('label', 'Text size'), bindInput(ann, 'text_size', ch(), { type: 'number', step: 0.5, k: k('ts'), width: '80px', placeholder: '4.5' }))),
+    ];
+  }
+
+  // Tests between the graph's groups, computed from its own data.
+  compareCard(ann, i) {
+    const g = this.item;
+    const k = (x) => `ann${i}-${x}`;
+    const ch = (structural) => () => this.changed(structural);
+    const main = this.mainLayer();
+    const schema = this.schema(main?.dataset);
+    const x = main?.aes?.x?.col;
+    const split = sideBySide(main);
+    const compared = ann.within && split ? split : x;
+    const levels = levelsOf(schema, compared);
+    const opts = [
+      split ? h('div.param', h('label', 'Compare'), select(ann.within ? 'within' : 'x',
+        [['x', `Groups on the X axis (${x})`], ['within', `${split} within each ${x}`]],
+        (v) => { ann.within = v === 'within'; if (ann.within) ann.overall = false; this.changed(true); }, { k: k('within') })) : null,
+      h('div.param', h('label', 'Test'), bindSelect(ann, 'method', COMPARE_TESTS, ch(), { k: k('method') })),
+      h('div.param', h('label', 'Which pairs'), bindSelect(ann, 'comparisons', [['all', 'All pairs'], ['control', 'Each against a control'], ['none', 'None (overall test only)']], ch(true), { k: k('cmp') })),
+      ann.comparisons === 'control' ? h('div.param', h('label', 'Control group'), bindSelect(ann, 'ref', levels.map((l) => [l, l]), ch(), { placeholder: levels[0] ? `(first: ${levels[0]})` : '(first group)', k: k('ref') })) : null,
+      h('div.param', bindCheck(ann, 'paired', 'Paired (the same subjects in each group)', ch(true), { k: k('paired') })),
+      ann.paired ? h('div.param', h('label', 'Subject column'), bindSelect(ann, 'subject', columnOptions(schema), ch(), { placeholder: 'Choose…', k: k('subject') })) : null,
+      ann.comparisons !== 'none' ? h('div.param', h('label', 'Adjust P values for'), bindSelect(ann, 'p_adjust', [['holm', 'Multiple comparisons (Holm)'], ['bonferroni', 'Multiple comparisons (Bonferroni)'], ['BH', 'False discovery rate (Benjamini-Hochberg)'], ['none', 'Nothing (unadjusted)']], ch(), { k: k('adj') })) : null,
+      ann.comparisons !== 'none' ? this.bracketParams(ann, k, ch) : null,
+      ann.within ? null : h('div.param', bindCheck({ overall: ann.overall !== false }, 'overall', 'Show the overall test (ANOVA / Kruskal-Wallis) in a corner', (v) => { ann.overall = v; this.changed(true); }, { k: k('overall') })),
+      !ann.within && ann.overall !== false ? h('div.param', h('label', 'Corner'), bindSelect(ann, 'position', [['top-left', 'Top left'], ['top-right', 'Top right'], ['bottom-left', 'Bottom left'], ['bottom-right', 'Bottom right']], ch(), { k: k('pos') })) : null,
+    ];
+    return h('div.card.ann',
+      h('div.card-head', h('span.card-title', 'Compare groups'), h('span.muted.ann-sub', x ? `${main.aes.y?.col || ''} by ${compared}` : ''), h('span.grow'),
+        iconButton('trash', 'Remove', () => { g.annotations.splice(i, 1); this.changed(true); }, { k: k('del') })),
+      h('div.card-body.params', main ? opts : h('div.hint', 'Give the first layer X and Y columns first.')));
+  }
+
+  analysisCard(ann, i, usable) {
+    const g = this.item;
+    const an = getItem(this.app.store.project, ann.analysis);
+    const kinds = (TESTS[an?.test]?.annotations || []);
+    const k = (s) => `ann${i}-${s}`;
+    const ch = (structural) => () => this.changed(structural);
+    let opts = [];
+    if (ann.kind === 'brackets') {
+      opts = this.bracketParams(ann, k, ch);
+    } else if (ann.kind === 'label') {
+      opts = [
+        h('div.param', h('label', 'Position'), bindSelect(ann, 'position', [['top-left', 'Top left'], ['top-right', 'Top right'], ['bottom-left', 'Bottom left'], ['bottom-right', 'Bottom right']], ch(), { k: k('pos') })),
+        h('div.param', h('label', 'Text size'), bindInput(ann, 'text_size', ch(), { type: 'number', step: 0.5, k: k('ts'), width: '80px', placeholder: '4.2' })),
+      ];
+    } else if (ann.kind === 'curve') {
+      opts = [
+        h('div.param', h('label', 'Colour'), colour(ann.colour || '#000000', (v) => { ann.colour = v; this.changed(); }, { k: k('col') })),
+        h('div.param', bindCheck({ band: ann.band !== false }, 'band', 'Show 95% confidence band (straight lines and polynomials)', (v) => { ann.band = v; this.changed(); }, { k: k('band') })),
+      ];
+    }
+    return h('div.card.ann',
+      h('div.card-head',
+        select(ann.analysis, usable.map((a) => [a.id, a.name]), (v) => {
+          ann.analysis = v;
+          const ks = TESTS[getItem(this.app.store.project, v).test].annotations;
+          if (!ks.includes(ann.kind)) ann.kind = ks[0];
+          this.changed(true);
+        }, { k: k('an') }),
+        select(ann.kind, kinds.map((x) => [x, ANN_KINDS[x]]), (v) => { ann.kind = v; this.changed(true); }, { k: k('kind') }),
+        h('span.grow'),
+        iconButton('trash', 'Remove', () => { g.annotations.splice(i, 1); this.changed(true); })),
+      h('div.card-body.params', opts));
+  }
+
+  // ---- text boxes ----------------------------------------------------------------------------
+
+  notes() {
+    const g = this.item;
+    g.notes = g.notes || [];
+    return [
+      g.notes.length ? null : h('div.hint', 'Add text anywhere on the graph: a note, a label for a group, n = 12…'),
+      ...g.notes.map((n, i) => this.noteCard(n, i)),
+      h('div.add-row', button('Add text box', () => {
+        g.notes.push({ id: `n${Date.now().toString(36)}`, ...NOTE_DEFAULTS });
+        this.changed(true);
+      }, { iconName: 'plus', k: 'add-note' })),
+      g.notes.length ? h('div.hint', 'Drag a text box\'s handle (●) on the graph to move it.') : null,
+    ];
+  }
+
+  noteCard(n, i) {
+    const g = this.item;
+    const k = (x) => `note${i}-${x}`;
+    const ch = (structural) => () => this.changed(structural);
+    const ta = h('textarea', { rows: 2, 'data-k': k('text'), placeholder: 'Text (Enter for a new line)' });
+    ta.value = n.text ?? '';
+    ta.addEventListener('input', () => { n.text = ta.value; this.changed(); this.placeNoteHandles(); });
+    // Panel positions are shown as % (stored as 0–1).
+    const pos = (key) => (n.data
+      ? bindInput(n, key, ch(), { type: 'number', step: 'any', k: k(key), width: '72px' })
+      : input(Math.round((n[key] ?? 0.5) * 1000) / 10, (v) => { n[key] = v === '' ? 0 : Number(v) / 100; this.changed(); this.placeNoteHandles(); },
+        { type: 'number', step: 1, min: 0, max: 100, k: k(key), width: '64px' }));
+    const toggle = (key, label, title) => h('button', {
+      type: 'button', class: `tg tg-${key}${n[key] ? ' on' : ''}`, title, 'aria-pressed': n[key] ? 'true' : 'false', 'data-k': k(key),
+      onclick: () => { n[key] = !n[key]; this.changed(true); },
+    }, label);
+    return h('div.card.note',
+      h('div.card-head', h('span.step-n', String(i + 1)), h('span.card-title', 'Text box'), h('span.grow'),
+        iconButton('copy', 'Duplicate', () => { g.notes.splice(i + 1, 0, { ...n, id: `n${Date.now().toString(36)}`, y: Math.max(0, (n.y ?? 0.5) - 0.1) }); this.changed(true); }),
+        iconButton('trash', 'Delete text box', () => { g.notes.splice(i, 1); this.changed(true); }, { k: k('del') })),
+      h('div.card-body',
+        ta,
+        h('div.note-row',
+          h('label', 'Text'), bindInput(n, 'size', ch(), { type: 'number', step: 0.5, min: 1, max: 20, k: k('size'), width: '60px' }),
+          colour(n.colour || '#000000', (v) => { n.colour = v; this.changed(); }, { k: k('colour') }),
+          h('span.toggles', toggle('bold', 'B', 'Bold'), toggle('italic', 'I', 'Italic')),
+          segmented([['left', 'Left'], ['center', 'Centre'], ['right', 'Right']], n.align || 'center', (v) => { n.align = v; this.changed(true); }, { k: k('align'), small: true })),
+        h('div.note-row',
+          h('label', 'Box'), segmented([['box', 'Box'], ['none', 'No box']], n.fill ? 'box' : 'none', (v) => { if (v === 'box') n.fill = n.lastFill || '#ffffff'; else { n.lastFill = n.fill; n.fill = ''; } this.changed(true); }, { k: k('box'), small: true }),
+          n.fill ? [colour(n.fill, (v) => { n.fill = v; this.changed(); }, { k: k('fill') }),
+            h('span.muted', 'outline'), bindInput(n, 'border', ch(), { type: 'number', step: 0.05, min: 0, max: 3, k: k('border'), width: '60px' })] : null),
+        h('div.note-row',
+          h('label', 'Where'), h('span.muted', 'X'), pos('x'), h('span.muted', 'Y'), pos('y'), h('span.muted', n.data ? '' : '% of the panel'),
+          bindCheck(n, 'data', 'axis values', () => {
+            // Switching to axis values: start from the middle of the visible axes, if known.
+            const geo = this.geometry;
+            if (n.data && geo?.h && geo?.v) {
+              const mid = (r, f) => r[0] + f * (r[1] - r[0]);
+              n.x = Number(mid(geo.h.range, n.x ?? 0.5).toPrecision(3));
+              n.y = Number(mid(geo.v.range, n.y ?? 0.5).toPrecision(3));
+            } else if (!n.data) { n.x = 0.5; n.y = 0.9; }
+            this.changed(true);
+          }, { k: k('data') }))));
+  }
+
+  // Grips over the preview, one per text box placed by panel position, to drag it.
+  placeNoteHandles() {
+    if (!this.noteLayer) return;
+    const geo = this.geometry;
+    const notes = this.item.notes || [];
+    fill(this.noteLayer, geo ? notes.map((n, i) => {
+      if (n.data || !String(n.text ?? '').trim()) return null;
+      const left = geo.left + (n.x ?? 0.5) * (geo.right - geo.left);
+      const top = geo.top + (1 - (n.y ?? 0.5)) * (geo.bottom - geo.top);
+      return h('span.note-grip', {
+        style: { left: `${(left * 100).toFixed(3)}%`, top: `${(top * 100).toFixed(3)}%` },
+        title: `Drag to move "${String(n.text).split('\n')[0].slice(0, 40)}"`, 'data-note': i,
+        onpointerdown: (e) => this.startNoteDrag(e, n),
+      });
+    }) : null);
+  }
+
+  startNoteDrag(e, n) {
+    const geo = this.geometry;
+    if (e.button !== 0 || !geo) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const grip = e.currentTarget;
+    const rect = this.img.getBoundingClientRect();
+    const frameRect = this.frame.getBoundingClientRect();
+    const clamp = (v) => Math.min(1, Math.max(0, v));
+    let next = null;
+    grip.classList.add('dragging');
+    const move = (ev) => {
+      const fx = (ev.clientX - rect.left) / rect.width;
+      const fy = (ev.clientY - rect.top) / rect.height;
+      next = { x: clamp((fx - geo.left) / (geo.right - geo.left)), y: clamp((geo.bottom - fy) / (geo.bottom - geo.top)) };
+      grip.style.left = `${ev.clientX - frameRect.left}px`;
+      grip.style.top = `${ev.clientY - frameRect.top}px`;
+    };
+    const up = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      grip.classList.remove('dragging');
+      if (!next) return;
+      n.x = Math.round(next.x * 1000) / 1000;
+      n.y = Math.round(next.y * 1000) / 1000;
+      this.changed(true);
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
   }
 
   // ---- formatting panel (under the graph) --------------------------------------------------
@@ -533,10 +698,11 @@ export class GraphView {
     this.zoneH = zone('h');
     this.axisGuide = h('div.axis-guide', { hidden: true });
     this.axisBadge = h('span.axis-badge', { hidden: true });
+    this.noteLayer = h('div.note-handles');
     this.frame = h('div.plot-frame', {
       tabindex: 0, 'aria-label': 'Graph preview. Drag its edges, or use Shift + arrow keys, to resize. Drag along an axis to stretch it.',
       onkeydown: (e) => this.keyResize(e),
-    }, h('div.plot-clip', this.img), this.zoneV, this.zoneH, this.axisGuide, this.axisBadge,
+    }, h('div.plot-clip', this.img), this.zoneV, this.zoneH, this.noteLayer, this.axisGuide, this.axisBadge,
     handle('e', 'Drag to change the width'), handle('s', 'Drag to change the height'), handle('se', 'Drag to resize (hold Shift to keep the shape)'), this.ghost);
     this.stage = h('div.stage', { class: 'fit' }, this.frame);
     this.status = h('div.preview-status');
@@ -544,14 +710,26 @@ export class GraphView {
     this.below = h('div.preview-below');
     const dpi = input(g.size.dpi || 300, (v) => { g.size.dpi = v; this.app.store.change(g.id); }, { type: 'number', step: 50, min: 72, max: 1200, width: '64px', k: 'dpi' });
     const dpiWrap = h('label.size', 'dpi', dpi);
-    const fmt = select(this.exportFmt, [['pdf', 'PDF'], ['svg', 'SVG'], ['png', 'PNG'], ['tiff', 'TIFF']], (v) => { this.exportFmt = v; dpiWrap.hidden = !['png', 'tiff'].includes(v); }, { k: 'fmt' });
+    this.svgText = true;
+    this.fmtHost = h('span.fmt-pick');
+    // Format buttons; SVG can keep its text as text (editable in Illustrator / Inkscape).
+    const pickFormat = () => fill(this.fmtHost,
+      segmented([['pdf', 'PDF'], ['svg', 'SVG'], ['png', 'PNG'], ['tiff', 'TIFF']], this.exportFmt, (v) => {
+        this.exportFmt = v;
+        dpiWrap.hidden = !['png', 'tiff'].includes(v);
+        pickFormat();
+      }, { small: true, k: 'fmt' }),
+      this.exportFmt === 'svg' ? checkbox(this.svgText, 'editable text', (v) => { this.svgText = v; }, {
+        k: 'svg-text', title: 'Keep text as text, to edit it in Illustrator or Inkscape (it then uses the fonts of the computer that opens it). Off: text is drawn as shapes and looks the same everywhere.',
+      }) : null);
+    pickFormat();
     dpiWrap.hidden = true;
     fill(this.right,
       h('div.preview-bar',
         sizeCtl('width', 'W'), h('span.times', '×'), sizeCtl('height', 'H'), h('span.muted', 'inches'),
         segmented([['fit', 'Fit'], ['100', '100%']], this.zoom, (z) => this.setZoom(z), { small: true, k: 'zoom' }),
         h('span.grow'),
-        fmt, dpiWrap,
+        this.fmtHost, dpiWrap,
         button('Export', () => this.exportPlot(), { iconName: 'download', kind: 'primary', k: 'export' })),
       this.stage, this.status, this.formatHost, this.below);
     this.zoomHost = this.right.querySelector('.segmented');
@@ -767,6 +945,7 @@ export class GraphView {
       this.img.style.transform = '';
       this.geometry = res.geometry || null;
       this.placeAxisZones();
+      this.placeNoteHandles();
       this.fitImage();
       this.stage.classList.remove('stale');
       fill(this.status);
@@ -774,6 +953,7 @@ export class GraphView {
       this.img.style.transform = '';
       this.geometry = null;
       this.placeAxisZones();
+      this.placeNoteHandles();
       this.stage.classList.toggle('stale', !!this.url);
       if (!this.url) this.img.removeAttribute('src');
       fill(this.status, messageBox(res.incomplete ? 'info' : 'error', res.error || 'Could not draw the graph.'));
@@ -787,10 +967,12 @@ export class GraphView {
   async exportPlot() {
     const g = this.item;
     const fmt = this.exportFmt;
+    const want = fmt === 'svg' && this.svgText ? 'svg_text' : fmt;
     try {
       toast(`Preparing ${fmt.toUpperCase()}…`);
-      const bytes = await this.app.engine.exportGraph(g.id, fmt, { width: g.size.width, height: g.size.height, dpi: g.size.dpi || 300 });
-      download(bytes, safeFilename(g.name, fmt), MIME[fmt]);
+      const out = await this.app.engine.exportGraph(g.id, want, { width: g.size.width, height: g.size.height, dpi: g.size.dpi || 300 });
+      download(out.bytes, safeFilename(g.name, fmt), MIME[fmt]);
+      if (want === 'svg_text' && out.format !== 'svg_text') toast('Saved the SVG with its text drawn as shapes: editable text needs the svglite R package, which could not be loaded here.', 'info', 8000);
     } catch (e) {
       toast(`Export failed: ${e.message}`, 'error', 8000);
     }

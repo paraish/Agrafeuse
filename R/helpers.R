@@ -241,6 +241,110 @@ ag_brackets <- function(result, data, x, y, format = "stars", hide_ns = FALSE,
   )
 }
 
+# ---- Statistics from a graph's own data (like ggpubr's stat_compare_means) ----
+
+# Pairwise tests between the groups on the x axis or, with `within`, between the
+# side-by-side groups of `within` inside each x group; plus an overall test.
+#   method: "t.test" (Welch), "t.test.equal" (Student) or "wilcox.test"
+#   comparisons: "all" pairs, "control" (each group against `ref`) or "none"
+#   paired: values matched by `subject` (paired t test / Wilcoxon signed-rank)
+# P values are adjusted with p.adjust(method = p_adjust) across all comparisons.
+ag_compare <- function(data, x, y, method = "t.test", comparisons = "all", ref = NULL,
+                       p_adjust = "holm", paired = FALSE, subject = NULL, within = NULL) {
+  d <- as.data.frame(data)
+  need <- c(x, y, within, if (paired) subject)
+  if (paired && (is.null(subject) || !nzchar(subject))) stop("Paired comparisons need a column that identifies each subject.")
+  miss <- setdiff(need, names(d))
+  if (length(miss)) stop("Compare groups: no column ", paste0("'", miss, "'", collapse = ", "), " in the graph data.")
+  if (!is.numeric(d[[y]])) stop("Compare groups: '", y, "' must be numbers.")
+  d$.g <- ag_factor(d[[if (is.null(within)) x else within]])
+  d <- d[!is.na(d[[y]]) & !is.na(d$.g), , drop = FALSE]
+  parametric <- method != "wilcox.test"
+  pair_test <- if (paired) c(t.test = "paired t test", t.test.equal = "paired t test", wilcox.test = "Wilcoxon signed-rank test")[[method]] else
+    c(t.test = "Welch's t test", t.test.equal = "t test", wilcox.test = "Mann-Whitney test")[[method]]
+
+  pair_p <- function(sub, a, b) {
+    if (paired) {
+      w <- merge(sub[sub$.g == a, c(subject, y)], sub[sub$.g == b, c(subject, y)], by = subject)
+      v1 <- w[[2]]; v2 <- w[[3]]
+      if (length(v1) < 2) return(NA_real_)
+    } else {
+      v1 <- sub[[y]][sub$.g == a]; v2 <- sub[[y]][sub$.g == b]
+      if (length(v1) < 1 || length(v2) < 1 || (parametric && (length(v1) < 2 || length(v2) < 2))) return(NA_real_)
+    }
+    tryCatch(suppressWarnings(switch(method,
+      t.test = stats::t.test(v1, v2, paired = paired)$p.value,
+      t.test.equal = stats::t.test(v1, v2, paired = paired, var.equal = !paired)$p.value,
+      wilcox.test = stats::wilcox.test(v1, v2, paired = paired)$p.value)), error = function(e) NA_real_)
+  }
+  pairs_for <- function(lv) {
+    if (comparisons == "none" || length(lv) < 2) return(list())
+    if (comparisons == "control") {
+      r <- if (!is.null(ref) && ref %in% lv) ref else lv[1]
+      return(lapply(setdiff(lv, r), function(o) c(r, o)))
+    }
+    utils::combn(lv, 2, simplify = FALSE)
+  }
+
+  cells <- if (is.null(within)) list(all = d) else split(d, ag_factor(d[[x]]), drop = TRUE)
+  rows <- list()
+  for (cell in names(cells)) {
+    sub <- cells[[cell]]
+    for (pr in pairs_for(levels(droplevels(sub$.g)))) {
+      r <- data.frame(group1 = pr[1], group2 = pr[2], p_raw = pair_p(sub, pr[1], pr[2]), stringsAsFactors = FALSE)
+      if (!is.null(within)) r[[x]] <- cell
+      rows[[length(rows) + 1]] <- r
+    }
+  }
+  cmp <- NULL
+  if (length(rows)) {
+    cmp <- do.call(rbind, rows)
+    cmp$p <- stats::p.adjust(cmp$p_raw, method = p_adjust)
+    if (!is.null(within)) { attr(cmp, "by") <- x; attr(cmp, "factor") <- within }
+  }
+
+  # The overall test, for groups on the x axis.
+  label <- NULL
+  k <- nlevels(droplevels(d$.g))
+  if (is.null(within) && k >= 2) {
+    g <- droplevels(d$.g)
+    ov <- tryCatch(suppressWarnings(if (k == 2) {
+      lv <- levels(g)
+      list(name = pair_test, p = pair_p(d, lv[1], lv[2]))
+    } else if (paired) {
+      if (parametric) {
+        tab <- stats::anova(stats::lm(d[[y]] ~ g + factor(d[[subject]])))
+        list(name = "Repeated-measures ANOVA", p = tab[["Pr(>F)"]][1])
+      } else {
+        list(name = "Friedman test", p = stats::friedman.test(d[[y]], g, factor(d[[subject]]))$p.value)
+      }
+    } else if (parametric) {
+      list(name = if (method == "t.test") "Welch's ANOVA" else "One-way ANOVA",
+           p = stats::oneway.test(d[[y]] ~ g, var.equal = method == "t.test.equal")$p.value)
+    } else {
+      list(name = "Kruskal-Wallis", p = stats::kruskal.test(d[[y]], g)$p.value)
+    }), error = function(e) NULL)
+    if (!is.null(ov) && !is.na(ov$p)) label <- paste0(ov$name, ", ", ag_p_text(ov$p))
+  }
+  tables <- list()
+  if (!is.null(cmp)) tables[["Comparisons"]] <- ag_comparison_table(cmp)
+  notes <- c(paste0("Pairwise tests: ", pair_test, if (!is.null(cmp) && p_adjust != "none") paste0(", P values adjusted (", p_adjust, ")")))
+  ag_result("Compare groups", summary = label %||% "", tables = tables, comparisons = cmp, label = label, notes = notes)
+}
+
+# ag_compare() drawn on a graph: brackets with stars or p values, and the overall
+# test's result in a corner. Add it to a ggplot with +.
+ag_stat_compare <- function(data, x, y, method = "t.test", comparisons = "all", ref = NULL,
+                            p_adjust = "holm", paired = FALSE, subject = NULL, within = NULL,
+                            format = "stars", hide_ns = FALSE, overall = TRUE, position = "top-left",
+                            y_start = NULL, step = 0.09, text_size = 4.5, label_size = 4.2) {
+  res <- ag_compare(data, x, y, method, comparisons, ref, p_adjust, paired, subject, within)
+  out <- ag_brackets(res, data, x, y, format = format, hide_ns = hide_ns, y_start = y_start,
+                     step = step, text_size = text_size)
+  if (overall && !is.null(res$label)) out <- c(out, list(ag_corner_label(res$label, position, size = label_size)))
+  out
+}
+
 # A text label (e.g. "r = 0.82, p = 0.003") in a corner of the panel.
 # Positioned relative to the panel with I(), so it also works on log axes.
 ag_corner_label <- function(label, position = "top-left", size = 4.2, colour = "black") {
@@ -249,6 +353,24 @@ ag_corner_label <- function(label, position = "top-left", size = 4.2, colour = "
   ggplot2::annotate("text", x = I(if (left) 0.04 else 0.96), y = I(if (top) 0.96 else 0.04),
     label = label, hjust = if (left) 0 else 1, vjust = if (top) 1 else 0,
     size = size, colour = colour, lineheight = 1.1)
+}
+
+# A text box on a graph. x and y are fractions of the panel (0 to 1, from the
+# bottom left) unless data = TRUE, when they are values on the axes. hjust is
+# the alignment (0 left, 0.5 centre, 1 right) around the point. fill = NA
+# gives plain text with no box; border is the box outline's width.
+ag_text_box <- function(label, x = 0.5, y = 0.9, data = FALSE, size = 4, colour = "black",
+                        fill = "white", border = 0.25, face = "plain", hjust = 0.5, vjust = 0.5) {
+  if (!data) { x <- I(x); y <- I(y) }
+  if (is.na(fill) || !nzchar(fill)) {
+    return(ggplot2::annotate("text", x = x, y = y, label = label, size = size, colour = colour,
+                             fontface = face, hjust = hjust, vjust = vjust, lineheight = 1.1))
+  }
+  args <- list("label", x = x, y = y, label = label, size = size, colour = colour, fill = fill,
+               fontface = face, hjust = hjust, vjust = vjust, lineheight = 1.1)
+  # ggplot2 4.0 renamed the outline width of labels.
+  if (utils::packageVersion("ggplot2") >= "4.0.0") args$linewidth <- border else args$label.size <- border
+  do.call(ggplot2::annotate, args)
 }
 
 # The fitted curve of a regression result, optionally with its 95% confidence band.
@@ -840,6 +962,8 @@ ag_open_device <- function(file, format, width, height, dpi = 300) {
   cairo <- isTRUE(capabilities("cairo"))
   switch(format,
     svg = grDevices::svg(file, width = width, height = height),
+    # SVG with real, editable text (needs the svglite package).
+    svg_text = svglite::svglite(file, width = width, height = height),
     pdf = if (cairo) grDevices::cairo_pdf(file, width = width, height = height) else grDevices::pdf(file, width = width, height = height),
     png = if (cairo) grDevices::png(file, width = width, height = height, units = "in", res = dpi, type = "cairo")
           else grDevices::png(file, width = width, height = height, units = "in", res = dpi),

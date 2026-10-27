@@ -208,6 +208,32 @@ newGraph(p, {
   annotations: [],
 });
 
+// Statistics computed from the graph's data, and text boxes.
+newGraph(p, {
+  name: 'Compare groups and text boxes',
+  base: { dataset: plantLong.id, aes: { x: map('group'), y: map('weight') } },
+  layers: [{ id: 'l1', geom: 'jitter', dataset: '', aes: {}, params: geomDefaults('jitter') }],
+  annotations: [{ id: 'c1', kind: 'compare', method: 't.test', comparisons: 'all', p_adjust: 'holm', format: 'stars', overall: true, position: 'top-right' }],
+  notes: [
+    { id: 'n1', text: 'Plants\nn = 10', x: 0.1, y: 0.9, align: 'left', bold: true },
+    { id: 'n2', text: 'no box', x: 2, y: 4, data: true, fill: '', colour: '#ff0000', italic: true, size: 5 },
+    { id: 'n3', text: 'boxed', x: 0.9, y: 0.1, align: 'right', fill: '#ffeecc', border: 0.6, bold: true, italic: true },
+    { id: 'n4', text: '   ', x: 0.5, y: 0.5 },
+  ],
+});
+newGraph(p, {
+  name: 'Compare side by side',
+  base: { dataset: tooth.id, aes: { x: map('dose'), y: map('length'), fill: map('supplement') } },
+  layers: [{ id: 'l1', geom: 'mean_bar', dataset: '', aes: {}, params: { ...geomDefaults('mean_bar'), dodge: true } }],
+  annotations: [{ id: 'c1', kind: 'compare', within: true, method: 't.test.equal', comparisons: 'control', ref: 'Orange juice', p_adjust: 'BH', format: 'number', hide_ns: false, overall: false }],
+});
+newGraph(p, {
+  name: 'Compare paired',
+  base: { dataset: rm.id, aes: { x: map('time'), y: map('Body weight') } },
+  layers: [{ id: 'l1', geom: 'line', dataset: '', aes: { group: map('mouse') } }, { id: 'l2', geom: 'point', dataset: '', aes: {} }],
+  annotations: [{ id: 'c1', kind: 'compare', paired: true, subject: 'mouse', method: 'wilcox.test', comparisons: 'all', overall: true, hide_ns: true }],
+});
+
 // Schemas: data tables from JS, transforms unknown (null) like before R runs.
 const schemaOf = (id) => {
   const it = getItem(p, id);

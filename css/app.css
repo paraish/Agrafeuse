@@ -223,6 +223,19 @@ details.section[open] > summary::before { transform: rotate(45deg); }
 .base-cell { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
 .base-cell > label { font-size: 12px; font-weight: 600; color: var(--muted); }
 .base-cell .check { font-size: 12.5px; }
+/* text boxes */
+.note textarea { width: 100%; min-height: 48px; margin-bottom: 8px; resize: vertical; }
+.note-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
+.note-row > label:first-child { width: 44px; font-size: 13px; color: var(--muted); }
+.ann-sub { font-size: 12px; margin-left: 6px; }
+.preview-bar [hidden] { display: none !important; }
+details.more { margin: 4px 0 2px; }
+details.more > summary { cursor: pointer; font-size: 12.5px; color: var(--accent); padding: 2px 0; }
+details.more[open] > summary { margin-bottom: 4px; }
+.note-handles { position: absolute; inset: 0; pointer-events: none; z-index: 3; }
+.note-grip { position: absolute; width: 14px; height: 14px; margin: -7px 0 0 -7px; border-radius: 50%; background: var(--accent); border: 2px solid #fff; box-shadow: 0 0 0 1px var(--accent), var(--shadow); cursor: move; pointer-events: auto; opacity: 0; transition: opacity 0.15s; touch-action: none; }
+.plot-frame:hover .note-grip, .plot-frame:focus-within .note-grip, .note-grip.dragging { opacity: 0.9; }
+@media (hover: none) { .note-grip { opacity: 0.9; } }
 .inherited { font-family: var(--mono); font-size: 12.5px; color: var(--accent); padding: 0 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .aes-ctl select.inherits { color: var(--accent); }
 .axis-block { margin: 10px 0 6px; }

@@ -258,6 +258,35 @@ try {
   await page.waitForFunction(() => !document.querySelector('.preview-pane .stage.busy'), null, { timeout: 30000 }).catch(() => {});
   check(await page.locator('.preview-status .message.error').count() === 0, 'graph with plot-wide mappings renders');
 
+  // --- compare groups right on the graph (no analysis needed) --------------------------------------
+  await page.click('[data-k="add-compare"]');
+  await settle();
+  check(/ag_stat_compare\(\w+, x = "group", y = "value"\)/.test(await plotCode()), 'compare groups adds ag_stat_compare()');
+  await page.selectOption('[data-k="ann1-method"]', 'wilcox.test');
+  await page.selectOption('[data-k="ann1-cmp"]', 'control');
+  await page.selectOption('[data-k="ann1-fmt"]', 'p');
+  await settle();
+  check((await plotCode()).includes('method = "wilcox.test", comparisons = "control", format = "p"'), 'compare groups: test, control and p values');
+  check(await page.locator('.preview-status .message.error').count() === 0, 'graph with compared groups renders');
+
+  // --- text boxes, dragged into place ----------------------------------------------------------
+  await page.click('[data-k="add-note"]');
+  await page.fill('[data-k="note0-text"]', 'n = 4 per group');
+  await page.click('[data-k="note0-bold"]');
+  await settle();
+  check((await plotCode()).includes('ag_text_box("n = 4 per group", x = 0.5, y = 0.9, face = "bold")'), 'text box added');
+  await page.locator('.plot-frame').scrollIntoViewIfNeeded();
+  await page.hover('.plot-frame');
+  const grip = await page.locator('.note-grip').boundingBox();
+  await page.mouse.move(grip.x + grip.width / 2, grip.y + grip.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(grip.x - 80, grip.y + 60, { steps: 5 });
+  await page.mouse.up();
+  await settle();
+  const moved = /ag_text_box\("n = 4 per group", x = ([\d.]+), y = ([\d.]+)/.exec(await plotCode());
+  check(moved && Number(moved[1]) < 0.5 && Number(moved[2]) < 0.9, `text box dragged on the graph (x = ${moved?.[1]}, y = ${moved?.[2]})`);
+  check(await page.locator('.preview-status .message.error').count() === 0, 'graph with a text box renders');
+
   // --- the versions R and the packages run with are in the footer ---------------------------------
   const versions = await page.textContent('.site-foot .versions');
   check(/R \d+\.\d+\.\d+ \(your own R, through the bridge\)/.test(versions) && /ggplot2 \d/.test(versions) && /dplyr \d/.test(versions) && /emmeans \d/.test(versions),
@@ -271,14 +300,23 @@ try {
   // --- export -----------------------------------------------------------------------------------------
   await nav(graphName);
   await settle();
-  for (const fmt of ['pdf', 'png']) {
-    await page.selectOption('[data-k="fmt"]', fmt);
+  const exportAs = async (fmt) => {
+    await page.click(`[data-k="fmt:${fmt}"]`);
     const [dl] = await Promise.all([page.waitForEvent('download'), page.click('[data-k="export"]')]);
     const path = join(tmp, dl.suggestedFilename());
     await dl.saveAs(path);
-    const head = readFileSync(path).subarray(0, 4).toString('latin1');
-    check(fmt === 'pdf' ? head === '%PDF' : head.includes('PNG'), `export ${fmt} (${dl.suggestedFilename()})`);
+    return { name: dl.suggestedFilename(), bytes: readFileSync(path) };
+  };
+  for (const fmt of ['pdf', 'png']) {
+    const { name, bytes } = await exportAs(fmt);
+    const head = bytes.subarray(0, 4).toString('latin1');
+    check(fmt === 'pdf' ? head === '%PDF' : head.includes('PNG'), `export ${fmt} (${name})`);
   }
+  const svgText = (await exportAs('svg')).bytes.toString('utf8');
+  check(svgText.includes('<svg') && /<text[ >]/.test(svgText), 'export SVG with editable text (svglite)');
+  await page.uncheck('[data-k="svg-text"]');
+  const svgOutlined = (await exportAs('svg')).bytes.toString('utf8');
+  check(svgOutlined.includes('<svg') && !/<text[ >]/.test(svgOutlined), 'export SVG with text as outlines');
 
   // --- save .RData and open it again -------------------------------------------------------------
   const before = await page.$$eval('.nav-item .name', (els) => els.map((e) => e.textContent));

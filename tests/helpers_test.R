@@ -38,6 +38,20 @@ ok("pipe eval: grouped result is ungrouped", {
   r <- jsonlite::fromJSON(ag_pipe_eval(tg, c("group_by(supp)", "mutate(z = len - mean(len))")))
   stopifnot(is.null(r$failed), r$table$nrow == nrow(tg))
 })
+ok("compare groups", {
+  r <- ag_compare(d, "group", "weight")
+  stopifnot(nrow(r$comparisons) == 3, grepl("Welch's ANOVA", r$label), abs(r$comparisons$p_raw[3] - 0.0093) < 1e-3)
+  tg2 <- ToothGrowth; tg2$dose <- factor(tg2$dose)
+  w <- ag_compare(tg2, "dose", "len", within = "supp", comparisons = "control")
+  stopifnot(nrow(w$comparisons) == 3, attr(w$comparisons, "by") == "dose", is.null(w$label))
+  print(ag_compare(d, "group", "weight", method = "wilcox.test", comparisons = "none"))
+})
+ok("stat compare + text box draw", {
+  p <- ggplot(d, aes(group, weight)) + geom_point() + ag_stat_compare(d, "group", "weight", format = "p") +
+    ag_text_box("n = 10\nper group", 0.1, 0.9, hjust = 0) + ag_text_box("plain", 2, 4, data = TRUE, fill = NA)
+  r <- jsonlite::fromJSON(ag_draw(p, tempfile(fileext = ".svg"), "svg")); stopifnot(r$ok, !length(r$warnings))
+  r <- jsonlite::fromJSON(ag_draw(p, f <- tempfile(fileext = ".svg"), "svg_text")); stopifnot(r$ok, any(grepl("<text", readLines(f))))
+})
 ok("versions", {
   v <- jsonlite::fromJSON(ag_versions(c("ggplot2", "dplyr", "notapackage")))
   stopifnot(grepl("^[0-9]+[.][0-9]", v$r), !is.null(v$packages$ggplot2), is.null(v$packages$notapackage))

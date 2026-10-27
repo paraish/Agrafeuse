@@ -358,17 +358,37 @@ export class Engine extends EventTarget {
     }, `render:${id}`);
   }
 
-  // A graph file: svg, pdf, png or tiff. Returns bytes.
+  // A graph file: svg, svg_text (SVG with editable text, through svglite),
+  // pdf, png or tiff. Returns { bytes, format } (svg_text falls back to svg
+  // when svglite cannot be loaded or used).
   exportGraph(id, format, { width, height, dpi = 300 } = {}) {
     return this.enqueue(async () => {
       const r = await this.ensureNow(id);
       if (!r.ok) throw new Error(r.error);
       const g = getItem(this.getProject(), id);
-      const file = `${TMP}/export.${format}`;
-      const res = JSON.parse(await this.backend.evalString(
-        `ag_draw(${g.rname}, ${rstr(file)}, ${rstr(format)}, ${Number(width) || 5}, ${Number(height) || 4}, dpi = ${Number(dpi) || 300})`));
-      if (!res.ok) throw new Error(res.error);
-      return this.backend.readFile(file);
+      const draw = async (fmt) => {
+        const file = `${TMP}/export.${fmt === 'svg_text' ? 'svg' : fmt}`;
+        const res = JSON.parse(await this.backend.evalString(
+          `ag_draw(${g.rname}, ${rstr(file)}, ${rstr(fmt)}, ${Number(width) || 5}, ${Number(height) || 4}, dpi = ${Number(dpi) || 300})`));
+        return res.ok ? { bytes: await this.backend.readFile(file), format: fmt } : { error: res.error };
+      };
+      if (format === 'svg_text') {
+        let out = null;
+        if (!this.noSvglite) {
+          try {
+            await this.ensurePackages(['svglite']);
+            out = await draw('svg_text');
+          } catch (e) {
+            out = { error: e.message };
+          }
+          if (out.error) { this.noSvglite = true; console.warn('svglite unavailable, using svg():', out.error); }
+        }
+        if (out?.bytes) return out;
+        format = 'svg';
+      }
+      const out = await draw(format);
+      if (out.error) throw new Error(out.error);
+      return out;
     });
   }
 

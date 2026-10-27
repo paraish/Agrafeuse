@@ -439,8 +439,12 @@ export function graphCode(g, ctx) {
     parts.push(`${built.fn}(${a.join(', ')})`);
   });
 
-  // Statistics drawn from analyses.
+  // Statistics: computed from the graph's own data, or drawn from analyses.
   for (const ann of g.annotations || []) {
+    if (ann.kind === 'compare') {
+      parts.push(compareCode(ann, main, yLayer, ctx));
+      continue;
+    }
     const an = ctx.analyses[ann.analysis];
     if (!an) continue;
     const res = an.rname;
@@ -465,6 +469,12 @@ export function graphCode(g, ctx) {
       if (ann.band === false) a.push('band = FALSE');
       parts.push(`ag_fit_curve(${a.join(', ')})`);
     }
+  }
+
+  // Text boxes.
+  for (const n of g.notes || []) {
+    if (!String(n.text ?? '').trim()) continue;
+    parts.push(textBoxCode(n));
   }
 
   // Colour / fill scales.
@@ -594,6 +604,72 @@ export function graphCode(g, ctx) {
   if (extra) parts.push(extra);
 
   return `${g.rname} <- ${head}${parts.length ? ' +\n' + parts.map((p) => '  ' + p.replace(/\n/g, '\n  ')).join(' +\n') : ''}`;
+}
+
+export const NOTE_DEFAULTS = { text: 'Text', x: 0.5, y: 0.9, data: false, size: 4, colour: '#000000', fill: '#ffffff', border: 0.25, bold: false, italic: false, align: 'center' };
+
+// A text box: ag_text_box("…", x, y, …) with only what differs from the defaults.
+function textBoxCode(n) {
+  const v = { ...NOTE_DEFAULTS, ...n };
+  const a = [rstr(v.text), `x = ${rnum(v.x)}`, `y = ${rnum(v.y)}`];
+  if (v.data) a.push('data = TRUE');
+  if (Number(v.size) !== 4) a.push(`size = ${rnum(v.size)}`);
+  if (v.colour && v.colour.toLowerCase() !== '#000000') a.push(`colour = ${rstr(v.colour)}`);
+  if (!v.fill) a.push('fill = NA');
+  else {
+    if (v.fill.toLowerCase() !== '#ffffff') a.push(`fill = ${rstr(v.fill)}`);
+    if (Number(v.border) !== 0.25) a.push(`border = ${rnum(v.border || 0)}`);
+  }
+  const face = v.bold && v.italic ? 'bold.italic' : v.bold ? 'bold' : v.italic ? 'italic' : '';
+  if (face) a.push(`face = ${rstr(face)}`);
+  const hjust = { left: 0, center: 0.5, right: 1 }[v.align] ?? 0.5;
+  if (hjust !== 0.5) a.push(`hjust = ${hjust}`);
+  return `ag_text_box(${a.join(', ')})`;
+}
+
+// The groups a layer splits side by side (its fill / colour / group column), if any.
+export function sideBySide(layer) {
+  const x = layer?.aes?.x?.col;
+  for (const k of ['fill', 'colour', 'group']) {
+    const m = layer?.aes?.[k];
+    if (m?.mode === 'col' && m.col && m.col !== x) return m.col;
+  }
+  return null;
+}
+
+export const COMPARE_TESTS = [
+  ['t.test', "Welch's t test (does not assume equal SDs)"],
+  ['t.test.equal', 't test (assumes equal SDs)'],
+  ['wilcox.test', 'Mann-Whitney / Wilcoxon (non-parametric)'],
+];
+
+// "Compare groups": tests computed from the first layer's data (ag_stat_compare).
+function compareCode(ann, main, yLayer, ctx) {
+  const yCol = (main?.aes?.y?.mode === 'col' ? main.aes.y : yLayer?.aes?.y)?.col;
+  if (!main || !yCol) throw new Error('Comparing groups needs a layer with X and Y columns.');
+  const x = main.aes.x.col;
+  const a = [ctx.rnameOf(main.dataset), `x = ${rstr(x)}`, `y = ${rstr(yCol)}`];
+  if (ann.method && ann.method !== 't.test') a.push(`method = ${rstr(ann.method)}`);
+  if (ann.comparisons && ann.comparisons !== 'all') a.push(`comparisons = ${rstr(ann.comparisons)}`);
+  if (ann.comparisons === 'control' && ann.ref) a.push(`ref = ${rstr(ann.ref)}`);
+  if (ann.p_adjust && ann.p_adjust !== 'holm') a.push(`p_adjust = ${rstr(ann.p_adjust)}`);
+  if (ann.paired) {
+    if (!ann.subject) throw new Error('Paired comparisons need a column that identifies each subject.');
+    a.push('paired = TRUE', `subject = ${rstr(ann.subject)}`);
+  }
+  if (ann.within) {
+    const split = sideBySide(main);
+    if (!split) throw new Error('To compare side-by-side groups, split the first layer by Fill or Colour.');
+    a.push(`within = ${rstr(split)}`);
+  }
+  if (ann.format && ann.format !== 'stars') a.push(`format = ${rstr(ann.format)}`);
+  if (ann.hide_ns) a.push('hide_ns = TRUE');
+  if (ann.overall === false) a.push('overall = FALSE');
+  else if (ann.position && ann.position !== 'top-left') a.push(`position = ${rstr(ann.position)}`);
+  if (ann.y_start !== '' && ann.y_start != null) a.push(`y_start = ${rnum(ann.y_start)}`);
+  if (ann.step !== '' && ann.step != null && Number(ann.step) !== 0.09) a.push(`step = ${rnum(ann.step)}`);
+  if (ann.text_size && Number(ann.text_size) !== 4.5) a.push(`text_size = ${rnum(ann.text_size)}`);
+  return `ag_stat_compare(${a.join(', ')})`;
 }
 
 export function graphDeps(g) {
