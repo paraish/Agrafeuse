@@ -142,16 +142,21 @@ export class OpenAIBackend {
   }
 
   async chat(messages, { signal } = {}) {
+    const body = { model: this.model, messages, temperature: 0.2, max_tokens: 1500 };
+    // Ask for JSON in the reply's shape where the server can enforce it (LM Studio,
+    // Ollama, OpenAI…); servers that cannot are asked again without it.
+    if (!this.noSchema) body.response_format = { type: 'json_schema', json_schema: { name: 'agrafeuse_reply', schema: REPLY_SCHEMA } };
     let res;
     try {
-      res = await fetch(`${this.base}/chat/completions`, {
-        method: 'POST', headers: this.headers(), signal,
-        body: JSON.stringify({ model: this.model, messages, temperature: 0.2, max_tokens: 1500 }),
-      });
+      res = await fetch(`${this.base}/chat/completions`, { method: 'POST', headers: this.headers(), signal, body: JSON.stringify(body) });
     } catch (e) {
       throw this.unreachable(e);
     }
     const text = await res.text();
+    if (!res.ok && body.response_format && res.status >= 400 && res.status < 500 && res.status !== 401 && res.status !== 403 && res.status !== 429) {
+      this.noSchema = true;
+      return this.chat(messages, { signal });
+    }
     if (!res.ok) {
       let msg = text;
       try { msg = JSON.parse(text).error?.message || JSON.parse(text)[0]?.error?.message || text; } catch { /* plain text */ }

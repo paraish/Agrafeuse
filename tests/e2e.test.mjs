@@ -32,7 +32,8 @@ const browser = await chromium.launch();
 const page = await browser.newPage({ viewport: { width: 1400, height: 900 }, acceptDownloads: true });
 const errors = [];
 page.on('pageerror', (e) => errors.push(e.message));
-page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
+// (The mock model server turns down structured output with a 400 on purpose; the browser logs that.)
+page.on('console', (m) => { if (m.type() === 'error' && !/status of 400/.test(m.text())) errors.push(m.text()); });
 const ready = () => page.waitForFunction(() => document.querySelector('.rstatus')?.classList.contains('ready'), null, { timeout: 120000 });
 const settle = async () => { await page.waitForTimeout(500); await ready(); await page.waitForTimeout(300); };
 const nav = (name) => page.click(`.nav-item:has-text("${name}")`);
@@ -397,6 +398,30 @@ try {
   await page.click('.cp-plan button:has-text("Undo")');
   await page.waitForTimeout(300);
   check(await page.locator('.nav li[data-id]').count() === navBefore2, 'one undo takes back everything the assistant did');
+  // Sloppy answers are understood; a table with one column per group just works; impossible steps go back to the model.
+  const askAndApply = async (q) => {
+    const before = await page.locator('.cp-bot').count();
+    await page.fill('[data-k="cp-input"]', q);
+    await page.press('[data-k="cp-input"]', 'Enter');
+    await page.waitForFunction((n) => document.querySelectorAll('.cp-bot').length > n, before);
+    const plan = page.locator('.cp-bot').last();
+    const wont = await plan.locator('.cp-wont').count();
+    await plan.locator('button:has-text("Apply")').click();
+    await settle();
+    return { wont, ok: await plan.locator('li.ok').count(), bad: await plan.locator('li.bad').count() };
+  };
+  let r = await askAndApply('sloppy: box plot of weight by group with Mann-Whitney');
+  const sloppy = await page.evaluate(() => window.agrafeuse.engine.result(window.agrafeuse.store.selected)?.code || '');
+  check(r.wont === 0 && r.ok === 3 && sloppy.includes('method = "wilcox.test"') && sloppy.includes('labs(y = "Weight (g)")') && sloppy.includes('geom_boxplot'),
+    `paraphrased actions are understood (${r.ok} done, ${r.bad} skipped)`);
+  r = await askAndApply('wide: compare the groups of Plant growth');
+  const wideCode = await page.evaluate(() => window.agrafeuse.engine.result(window.agrafeuse.store.selected)?.code || '');
+  const wideAnalysis = await page.evaluate(() => window.agrafeuse.store.project.items.filter((x) => x.kind === 'analysis').pop());
+  check(r.ok === 3 && wideAnalysis.layout === 'columns' && wideAnalysis.test === 'kruskal' && wideCode.includes('x = "group", y = "value"'),
+    'a table with one column per group is analysed and graphed without reshaping by hand');
+  const calls = mock.state.count;
+  r = await askAndApply('ANOVA of mass by group');
+  check(mock.state.count === calls + 2 && r.wont === 0 && r.ok === 1, 'a step that cannot work goes back to the model, which fixes it');
   await page.uncheck('[data-k="cp-share"]');
   await page.fill('[data-k="cp-input"]', 'Which test should I use?');
   await page.press('[data-k="cp-input"]', 'Enter');

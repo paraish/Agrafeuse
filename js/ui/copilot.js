@@ -5,9 +5,9 @@
 import { h, fill, icon, rebuild } from './dom.js';
 import { button, iconButton, select, input, checkbox, messageBox, toast } from './widgets.js';
 import { WEBLLM_MODELS, API_PRESETS, WebLLMBackend, OpenAIBackend, webgpuStatus, isLocalUrl } from '../copilot/llm.js';
-import { parseReply, describeAction, applyActions } from '../copilot/actions.js';
-import { buildMessages, previewTarget } from '../copilot/prompt.js';
-import { getItem } from '../model.js';
+import { parseReply, describeAction, applyActions, checkActions } from '../copilot/actions.js';
+import { buildMessages, previewTarget, repairRequest } from '../copilot/prompt.js';
+import { getItem, datasets } from '../model.js';
 
 const SETTINGS_KEY = 'agrafeuse:assistant';
 const KEY_KEY = 'agrafeuse:assistant-key';
@@ -118,6 +118,7 @@ export class Copilot {
       h('label.cp-label', 'Model'),
       select(model.id, WEBLLM_MODELS.map((m) => [m.id, `${m.label} · ${m.gb} GB · ${m.license}`]), (v) => { s.webllmModel = v; this.save(); this.render(); }, { k: 'cp-model' }),
       h('div.hint', 'The download happens once; the browser keeps the model for next time. Answers take a few seconds to a minute, depending on the graphics card.'),
+      h('div.hint', 'Bigger models understand requests much better. If your graphics card has 8 GB or more, choose Qwen3 8B; for the best results, run a 8–14B model in LM Studio or Ollama (the other option above).'),
       msg,
       progress,
       button(this.backend?.kind === 'webllm' && this.backend.modelId === model.id ? 'Running' : 'Download and start', () => this.startWebLLM(), {
@@ -181,6 +182,7 @@ export class Copilot {
       input(this.key, (v) => { this.key = v.trim(); }, { k: 'cp-key', type: 'password', placeholder: preset.key ? 'Paste your key' : '(none)' }),
       checkbox(this.rememberKey, 'Remember the key in this browser', (v) => { this.rememberKey = v; }, { k: 'cp-remember', title: 'Kept only in this browser (not in your project files). Leave this off on a shared computer.' }),
       h('label.cp-label', 'Model'),
+      h('div.hint', 'Instruction-tuned models of 7B or more work best (e.g. Qwen3 8B or 14B, Gemma 3 12B, Llama 3.1 8B); very small models often pick the wrong columns.'),
       h('div.cp-row',
         h('input', { 'data-k': 'cp-api-model', list: 'cp-models', value: api.model, placeholder: 'e.g. qwen3-8b', oninput: (e) => { api.model = e.target.value.trim(); } }),
         button('List models', () => this.listModels(), { k: 'cp-list' })),
@@ -263,13 +265,16 @@ export class Copilot {
         return h('li', { class: [r ? (r.ok ? 'ok' : 'bad') : '', off ? 'off' : ''].join(' ') },
           m.status === 'proposed' ? h('input', { type: 'checkbox', checked: !off, 'aria-label': 'Include this step', 'data-k': `cp-step-${i}-${j}`, onchange: (e) => { m.skip = m.skip || new Set(); if (e.target.checked) m.skip.delete(j); else m.skip.add(j); } })
             : r ? icon(r.ok ? 'check' : 'alert', 14) : null,
-          h('span', describeAction(a), r?.note ? h('span.cp-note', ` ${r.note}`) : null));
+          h('span', describeAction(a), r?.note ? h('span.cp-note', ` ${r.note}`) : null,
+            m.status === 'proposed' && m.checks?.[j] && !m.checks[j].ok ? h('span.cp-note.cp-wont', ` Won't work: ${m.checks[j].note}`) : null,
+            m.status === 'proposed' && m.checks?.[j]?.ok && m.checks[j].note ? h('span.cp-note', ` ${m.checks[j].note}`) : null));
       })),
       m.status === 'proposed' ? h('div.cp-row',
         button('Apply', () => this.apply(m), { kind: 'primary', iconName: 'check', k: `cp-apply-${i}` }),
         button('Dismiss', () => { m.status = 'dismissed'; this.render(); }, { k: `cp-dismiss-${i}` })) : null,
       m.status === 'applied' ? h('div.cp-row', button('Undo', () => { this.app.store.undo(); m.status = 'undone'; this.render(); }, { iconName: 'undo', k: `cp-undo-${i}` })) : null) : null;
-    return h('div.cp-msg.cp-bot', m.reply ? h('div.cp-reply', m.reply) : null, plan);
+    return h('div.cp-msg.cp-bot', m.reply ? h('div.cp-reply', m.reply) : null, plan,
+      m.raw ? h('details.cp-raw', h('summary', 'What the model wrote'), h('pre', m.raw)) : null);
   }
 
   // What was said before, for context (actions as the model wrote them).
@@ -306,17 +311,45 @@ export class Copilot {
     try {
       await this.ensureBackend(pending);
       pending.text = 'Thinking…';
+      const engine = this.app.engine;
+      // Every dataset's columns, so the model sees them (transforms are known only once they have run).
+      if (engine.state === 'ready') {
+        await Promise.all(datasets(this.app.store.project).filter((d) => !engine.schemaOf(d.id)).map((d) => engine.ensure(d.id).catch(() => null)));
+      }
       let preview = null;
       const ds = this.share ? previewTarget(this.app) : null;
-      if (ds && this.app.engine.state === 'ready') {
-        const res = await this.app.engine.preview(ds, 15).catch(() => null);
+      if (ds && engine.state === 'ready') {
+        const res = await engine.preview(ds, 15).catch(() => null);
         if (res?.ok) preview = { name: getItem(this.app.store.project, ds)?.name, table: res.table };
       }
-      const messages = buildMessages(this.app, history, text, { shareValues: this.share, preview });
+      const budget = this.backend.kind === 'webllm' ? 2900 : 24000;
+      const messages = buildMessages(this.app, history, text, { shareValues: this.share, preview, budget });
       const raw = await this.backend.chat(messages, { signal: this.abort.signal });
-      const parsed = parseReply(raw);
+      let parsed = parseReply(raw);
+      let checks = checkActions(this.app, parsed.actions);
+      // Steps that would not work go back to the model once, with the reasons.
+      const failing = (c) => c.filter((x) => !x.ok).length;
+      if (failing(checks)) {
+        pending.text = 'Checking its plan…';
+        this.render();
+        const problems = checks.map((c, index) => ({ ...c, index, do: parsed.actions[index].do, why: c.note })).filter((c) => !c.ok);
+        const retry = [messages[0], { role: 'user', content: text }, { role: 'assistant', content: raw }, { role: 'user', content: repairRequest(problems) }];
+        try {
+          const raw2 = await this.backend.chat(retry, { signal: this.abort.signal });
+          const p2 = parseReply(raw2);
+          const c2 = checkActions(this.app, p2.actions);
+          if (p2.actions.length && failing(c2) < failing(checks)) { parsed = p2; checks = c2; }
+        } catch (e) {
+          if (e.name === 'AbortError') throw e;
+        }
+      }
       this.messages.splice(this.messages.indexOf(pending), 1);
-      this.messages.push({ role: 'assistant', reply: parsed.reply || (parsed.actions.length ? '' : '(no answer)'), actions: parsed.actions, status: parsed.actions.length ? 'proposed' : null });
+      // Steps that still would not work are shown, unticked, with the reason.
+      const skip = new Set(checks.map((c, j) => (c.ok ? -1 : j)).filter((j) => j >= 0));
+      this.messages.push({
+        role: 'assistant', reply: parsed.reply || (parsed.actions.length ? '' : '(no answer)'), actions: parsed.actions,
+        checks, skip, status: parsed.actions.length ? 'proposed' : null, raw,
+      });
     } catch (e) {
       this.messages.splice(this.messages.indexOf(pending), 1);
       this.messages.push(e.name === 'AbortError' ? { role: 'error', text: 'Stopped.' } : { role: 'error', text: e.message || String(e), retry: text });

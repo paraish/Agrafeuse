@@ -3,6 +3,27 @@ import { createServer } from 'node:http';
 export function startMock(port) {
   const state = { last: null, count: 0 };
   const reply = (text) => {
+    // Asked to fix its plan: fixes a wrong column; otherwise answers as before (a stubborn model).
+    if (/^Some of your actions cannot be done/.test(text)) {
+      if (!/mass/.test(text)) return reply(state.question);
+      return { reply: 'Fixed: the values are in weight.', actions: [
+        { do: 'new_analysis', test: 'anova1', dataset: 'Plant growth (long)', y: 'weight', group: 'group' },
+      ] };
+    }
+    state.question = text;
+    if (/mass/i.test(text)) return { reply: 'One-way ANOVA of mass.', actions: [
+      { do: 'new_analysis', test: 'anova1', dataset: 'Plant growth (long)', y: 'mass', group: 'group' },
+    ] };
+    if (/sloppy/i.test(text)) return { reply: 'Box plot with Mann-Whitney.', actions: [
+      { action: 'create_graph', data: 'plant growth long', type: 'box plot', x: 'Group', y: 'Weight' },
+      { compare: { test: 'Mann Whitney' } },
+      { do: 'set_labels', ylab: 'Weight (g)' },
+    ] };
+    if (/wide/i.test(text)) return { reply: 'Each column is a group.', actions: [
+      { do: 'new_analysis', test: 'Kruskal-Wallis', dataset: 'Plant growth' },
+      { do: 'new_graph', template: 'scatter_dot', dataset: 'Plant growth' },
+      { do: 'compare_groups', method: 'wilcox.test' },
+    ] };
     if (/bar graph/i.test(text)) return { reply: 'A bar graph of weight by group, with Mann-Whitney comparisons (small groups).', actions: [
       { do: 'new_graph', template: 'bar_points', dataset: 'Plant growth (long)', x: 'group', y: 'weight', name: 'Weight bars' },
       { do: 'compare_groups', method: 'wilcox.test', comparisons: 'control', ref: 'Control' },
@@ -25,6 +46,8 @@ export function startMock(port) {
     req.on('data', (d) => { body += d; });
     req.on('end', () => {
       const j = JSON.parse(body || '{}');
+      // Like an older server: no structured output (the app must ask again without it).
+      if (j.response_format) { res.writeHead(400, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error: { message: "'response_format.type' is not supported" } })); return; }
       state.last = j; state.count++;
       const user = j.messages?.[j.messages.length - 1]?.content || '';
       const content = '```json\n' + JSON.stringify(reply(user)) + '\n```';

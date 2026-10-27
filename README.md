@@ -60,7 +60,11 @@ Open it from the **Assistant** strip on the right, and choose a model once:
 
 What the model sees: the names of your items, their columns, column types and group names, and what you ask. **Data values and analysis results are only included if you allow it** (the *Let it see data values and results* box, on by default only when the model runs on your computer). With an online API, whatever is sent is handled under that company's rules.
 
-The assistant does not change anything by itself: it proposes steps, and you choose which to apply. Every step is an ordinary step, layer or analysis you can inspect and edit, with its R code; one undo removes a whole batch. Small models make mistakes, so check the plan, and the choice of test, before applying.
+The assistant does not change anything by itself: it proposes steps, and you choose which to apply. Every step is an ordinary step, layer or analysis you can inspect and edit, with its R code; one undo removes a whole batch.
+
+Before you see a plan, the app tries it on a copy of the project. Names that are nearly right are matched (`Treatment1` → `Treatment 1`; ambiguous ones are not guessed), and a table with one column per group is used as it is (the test compares its columns; the graph uses its long version). Steps that still cannot work go back to the model once, with the reason, to be fixed; any left are shown unticked with the reason. *What the model wrote* under each answer shows its raw reply.
+
+Model size matters most: 1–4B models in the browser handle simple requests; 8–14B models (Qwen3 8B in the browser with a large graphics card, or LM Studio / Ollama) are much more reliable. Check the plan, and the choice of test, before applying.
 
 ## Using your files in R
 
