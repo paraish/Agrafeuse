@@ -421,14 +421,16 @@ export function graphCode(g, ctx) {
     }
   }
 
-  // Axes.
+  // Axes. Ranges go to the coordinate system (coord_cartesian), which zooms
+  // without dropping data; scale limits would remove points outside the range
+  // and change means, bars and fits.
+  const coordLim = {};
   const axis = (which, s, discrete) => {
     if (!s || discrete) return;
-    const lim = s.min !== '' && s.min != null || s.max !== '' && s.max != null
-      ? `limits = c(${s.min === '' || s.min == null ? 'NA' : rnum(s.min)}, ${s.max === '' || s.max == null ? 'NA' : rnum(s.max)})` : null;
+    const set = (v) => v !== '' && v != null && !Number.isNaN(Number(v));
+    if (set(s.min) || set(s.max)) coordLim[which] = `c(${set(s.min) ? rnum(s.min) : 'NA'}, ${set(s.max) ? rnum(s.max) : 'NA'})`;
     const linear = !s.trans || s.trans === 'identity';
     const a = [];
-    if (lim) a.push(lim);
     if (s.from_zero) a.push('expand = expansion(mult = c(0, 0.05))');
     if (Number(s.step) > 0 && (linear || s.trans === 'sqrt')) a.push(`breaks = scales::breaks_width(${rnum(s.step)})`);
     if (s.format && NUMBER_FORMATS[s.format]) a.push(`labels = ${NUMBER_FORMATS[s.format][1]}`);
@@ -448,7 +450,9 @@ export function graphCode(g, ctx) {
     if (g.facet.ncol) a.push(`ncol = ${rnum(g.facet.ncol)}`);
     parts.push(`facet_wrap(${a.join(', ')})`);
   }
-  if (g.flip) parts.push('coord_flip()');
+  const lims = ['x', 'y'].filter((k) => coordLim[k]).map((k) => `${k}lim = ${coordLim[k]}`);
+  if (g.flip) parts.push(`coord_flip(${lims.join(', ')})`);
+  else if (lims.length) parts.push(`coord_cartesian(${lims.join(', ')})`);
 
   // Labels. Underlined titles are written as plotmath, e.g. quote(underline(bold("Dose"))).
   const L = g.labels || {};

@@ -100,6 +100,22 @@ try {
   check(styled.includes('quote(underline(') && styled.includes('angle = 45'), 'underlined Y title and angled X labels');
   check(await page.locator('.preview-status .message.error').count() === 0, 'formatted graph renders');
 
+  // Stretch the Y axis by dragging it, then reset it with a double-click.
+  await page.waitForFunction(() => !document.querySelector('.axis-zone-v')?.hidden, null, { timeout: 30000 });
+  await page.locator('.plot-frame').scrollIntoViewIfNeeded();
+  const zone = await page.locator('.axis-zone-v').boundingBox();
+  await page.mouse.move(zone.x + zone.width / 2, zone.y + zone.height * 0.15);
+  await page.mouse.down();
+  await page.mouse.move(zone.x + zone.width / 2, zone.y + zone.height * 0.45, { steps: 8 });
+  await page.mouse.up();
+  await settle();
+  const ys = await page.evaluate(() => window.agrafeuse.store.item().y_scale);
+  const ycode = await page.evaluate(() => window.agrafeuse.engine.result(window.agrafeuse.store.selected).code);
+  check(Number(ys.max) > 0 && ycode.includes('coord_cartesian(ylim = c('), `dragging the Y axis sets its range (${ys.min} to ${ys.max})`);
+  await page.dblclick('.axis-zone-v');
+  await settle();
+  check((await page.evaluate(() => window.agrafeuse.store.item().y_scale.max)) === '', 'double-clicking the axis resets its range');
+
   // Add a layer and turn it into a box plot with a fixed colour.
   await page.click('[data-k="add-layer"]');
   const lastGeom = page.locator('.layer').last().locator('.card-head select');

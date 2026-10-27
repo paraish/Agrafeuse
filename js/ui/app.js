@@ -61,7 +61,7 @@ export class App {
     this.redoBtn = iconButton('redo', 'Redo (Ctrl+Shift+Z)', () => this.store.redo());
     const top = h('header.topbar',
       iconButton('menu', 'Show or hide the project panel', () => this.root.classList.toggle('nav-open'), { cls: 'nav-toggle' }),
-      h('div.brand', h('img.logo', { src: 'assets/icon.svg', alt: '', width: 38, height: 35 }), h('span', 'Agrafeuse')),
+      h('div.brand', h('img.logo', { src: 'assets/icon.svg', alt: '', width: 30, height: 30 }), h('span', 'Agrafeuse')),
       this.projectName,
       h('span.grow'),
       button('New', () => this.newProject(), { iconName: 'file', title: 'Start a new project' }),

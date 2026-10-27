@@ -291,7 +291,8 @@ export class GraphView {
     const tabs = [['axes', 'Axes'], ['text', 'Title and fonts'], ['legend', 'Legend and colours'], ['layout', 'Layout']];
     this.formatTab = this.formatTab || 'axes';
     const body = {
-      axes: () => h('div.fmt-cols', this.axisColumn('x'), this.axisColumn('y')),
+      axes: () => [h('div.hint.fmt-tip', 'Tip: on the graph, drag along an axis to stretch or shrink it, and double-click the axis to reset it.'),
+        h('div.fmt-cols', this.axisColumn('x'), this.axisColumn('y'))],
       text: () => this.textTab(),
       legend: () => this.legendTab(),
       layout: () => this.layoutTab(),
@@ -443,10 +444,21 @@ export class GraphView {
     // Drag the right edge, bottom edge or corner to resize the graph (Shift keeps the shape).
     const handle = (mode, title) => h('span', { class: `rh rh-${mode}`, title, onpointerdown: (e) => this.startResize(e, mode) });
     this.ghost = h('div.resize-ghost', { hidden: true }, h('span.size-badge'));
+    // Strips over the axes: drag to stretch or shrink an axis, double-click to reset it.
+    const zone = (orient) => h('div', {
+      class: `axis-zone axis-zone-${orient}`, hidden: true,
+      onpointerdown: (e) => this.startAxisDrag(e, orient),
+      ondblclick: () => this.resetAxis(orient),
+    });
+    this.zoneV = zone('v');
+    this.zoneH = zone('h');
+    this.axisGuide = h('div.axis-guide', { hidden: true });
+    this.axisBadge = h('span.axis-badge', { hidden: true });
     this.frame = h('div.plot-frame', {
-      tabindex: 0, 'aria-label': 'Graph preview. Drag its edges, or use Shift + arrow keys, to resize.',
+      tabindex: 0, 'aria-label': 'Graph preview. Drag its edges, or use Shift + arrow keys, to resize. Drag along an axis to stretch it.',
       onkeydown: (e) => this.keyResize(e),
-    }, this.img, handle('e', 'Drag to change the width'), handle('s', 'Drag to change the height'), handle('se', 'Drag to resize (hold Shift to keep the shape)'), this.ghost);
+    }, h('div.plot-clip', this.img), this.zoneV, this.zoneH, this.axisGuide, this.axisBadge,
+    handle('e', 'Drag to change the width'), handle('s', 'Drag to change the height'), handle('se', 'Drag to resize (hold Shift to keep the shape)'), this.ghost);
     this.stage = h('div.stage', { class: 'fit' }, this.frame);
     this.status = h('div.preview-status');
     this.formatHost = h('div.format-panel');
@@ -524,6 +536,115 @@ export class GraphView {
     this.setSize(r(w), r(ht));
   }
 
+  // ---- dragging an axis to change its range -------------------------------------------------
+
+  // Which scale an on-screen axis belongs to (X and Y swap when the graph is flipped).
+  axisScale(orient) {
+    const g = this.item;
+    const which = (orient === 'v') !== !!g.flip ? 'y' : 'x';
+    g[`${which}_scale`] = g[`${which}_scale`] || { trans: 'identity' };
+    return { which, scale: g[`${which}_scale`] };
+  }
+
+  placeAxisZones() {
+    const geo = this.geometry;
+    const pct = (v) => `${(v * 100).toFixed(3)}%`;
+    const label = (orient) => `Drag to stretch or shrink the ${this.axisScale(orient).which.toUpperCase()} axis. Double-click to reset it.`;
+    if (geo?.v) {
+      const w = Math.min(geo.left, 0.14);
+      Object.assign(this.zoneV.style, { left: pct(geo.left - w), width: pct(w + 0.015), top: pct(geo.top), height: pct(geo.bottom - geo.top) });
+      this.zoneV.title = label('v');
+    }
+    if (geo?.h) {
+      const ht = Math.min(1 - geo.bottom, 0.14);
+      Object.assign(this.zoneH.style, { left: pct(geo.left), width: pct(geo.right - geo.left), top: pct(geo.bottom - 0.015), height: pct(ht + 0.015) });
+      this.zoneH.title = label('h');
+    }
+    this.zoneV.hidden = !geo?.v;
+    this.zoneH.hidden = !geo?.h;
+  }
+
+  // The value grabbed follows the pointer; the far end of the axis stays put.
+  startAxisDrag(e, orient) {
+    const geo = this.geometry;
+    if (e.button !== 0 || !geo?.[orient]) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const { which, scale } = this.axisScale(orient);
+    const rect = this.img.getBoundingClientRect();
+    const [r0, r1] = geo[orient].range;
+    // Screen positions of the low and high ends of the visible range.
+    const vertical = orient === 'v';
+    const lo = vertical ? rect.top + geo.bottom * rect.height : rect.left + geo.left * rect.width;
+    const hi = vertical ? rect.top + geo.top * rect.height : rect.left + geo.right * rect.width;
+    const pos = (ev) => (vertical ? ev.clientY : ev.clientX);
+    const start = pos(e);
+    const v0 = r0 + ((start - lo) / (hi - lo)) * (r1 - r0);
+    const keepLow = Math.abs(start - lo) > Math.abs(start - hi);
+    const anchor = keepLow ? lo : hi;
+    let next = null;
+    this.frame.classList.add('axis-dragging');
+    this.axisGuide.className = `axis-guide axis-guide-${orient}`;
+    const move = (ev) => {
+      const p = pos(ev);
+      const frac = Math.max(0.05, (keepLow ? p - lo : hi - p) / (hi - lo));
+      const range = keepLow ? [r0, r0 + (v0 - r0) / frac] : [r1 - (r1 - v0) / frac, r1];
+      next = this.rangeToLimits(range, scale);
+      // Live preview: stretch the picture around the fixed end until R redraws it.
+      const k = (p - anchor) / (start - anchor);
+      if (Number.isFinite(k) && k > 0.05) {
+        const origin = vertical ? `50% ${anchor - rect.top}px` : `${anchor - rect.left}px 50%`;
+        this.img.style.transformOrigin = origin;
+        this.img.style.transform = vertical ? `scaleY(${k})` : `scaleX(${k})`;
+      }
+      const frameRect = this.frame.getBoundingClientRect();
+      this.axisGuide.hidden = false;
+      if (vertical) Object.assign(this.axisGuide.style, { top: `${p - frameRect.top}px`, left: `${geo.left * 100}%`, width: `${(geo.right - geo.left) * 100}%`, height: '' });
+      else Object.assign(this.axisGuide.style, { left: `${p - frameRect.left}px`, top: `${geo.top * 100}%`, height: `${(geo.bottom - geo.top) * 100}%`, width: '' });
+      this.axisBadge.hidden = false;
+      this.axisBadge.textContent = `${which.toUpperCase()} axis: ${fmtNum(next[0])} to ${fmtNum(next[1])}`;
+      Object.assign(this.axisBadge.style, { left: `${ev.clientX - frameRect.left + 14}px`, top: `${ev.clientY - frameRect.top + 14}px` });
+    };
+    const up = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      this.frame.classList.remove('axis-dragging');
+      this.axisGuide.hidden = true;
+      this.axisBadge.hidden = true;
+      if (!next) { this.img.style.transform = ''; return; }
+      scale.min = next[0];
+      scale.max = next[1];
+      this.changed(true);
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+  }
+
+  // A visible range (in the scale's own units, including ggplot2's padding)
+  // back to the axis minimum and maximum to type into coord_cartesian().
+  rangeToLimits([a, b], scale) {
+    const lowPad = scale.from_zero ? 0 : 0.05;
+    const highPad = 0.05;
+    const d = (b - a) / (1 + lowPad + highPad);
+    const l1 = a + lowPad * d;
+    const l2 = l1 + d;
+    const trans = scale.trans || 'identity';
+    const inverse = { identity: (v) => v, log10: (v) => 10 ** v, log2: (v) => 2 ** v, sqrt: (v) => v * Math.abs(v) }[trans] || ((v) => v);
+    let out = [inverse(l1), inverse(l2)];
+    if (scale.reverse && trans === 'identity') out = out.map((v) => -v);
+    out.sort((x, y) => x - y);
+    if (trans === 'log10' || trans === 'log2') return out.map((v) => Number(v.toPrecision(2)));
+    const step = 10 ** (Math.floor(Math.log10(Math.abs(out[1] - out[0]) || 1)) - 1);
+    return out.map((v) => Number((Math.round(v / step) * step).toPrecision(12)));
+  }
+
+  resetAxis(orient) {
+    const { scale } = this.axisScale(orient);
+    scale.min = '';
+    scale.max = '';
+    this.changed(true);
+  }
+
   // "Fit" scales the plot to the space available, keeping its proportions;
   // "100%" shows it at its real size (1 inch = 96 screen pixels).
   fitImage() {
@@ -564,10 +685,16 @@ export class GraphView {
       if (this.url) URL.revokeObjectURL(this.url);
       this.url = URL.createObjectURL(new Blob([res.svg], { type: 'image/svg+xml' }));
       this.img.src = this.url;
+      this.img.style.transform = '';
+      this.geometry = res.geometry || null;
+      this.placeAxisZones();
       this.fitImage();
       this.stage.classList.remove('stale');
       fill(this.status);
     } else {
+      this.img.style.transform = '';
+      this.geometry = null;
+      this.placeAxisZones();
       this.stage.classList.toggle('stale', !!this.url);
       if (!this.url) this.img.removeAttribute('src');
       fill(this.status, messageBox(res.incomplete ? 'info' : 'error', res.error || 'Could not draw the graph.'));
@@ -589,6 +716,10 @@ export class GraphView {
       toast(`Export failed: ${e.message}`, 'error', 8000);
     }
   }
+}
+
+function fmtNum(v) {
+  return Number.isFinite(v) ? String(Number(v.toPrecision(4))) : '–';
 }
 
 const DEFAULT_SWATCHES = ['#4c72b0', '#dd8452', '#55a868', '#c44e52', '#8172b3', '#937860', '#da8bc3', '#8c8c8c', '#ccb974', '#64b5cd'];

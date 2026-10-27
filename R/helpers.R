@@ -817,14 +817,25 @@ ag_open_device <- function(file, format, width, height, dpi = 300) {
 
 # Draw a plot to a file. Returns JSON with any error and warnings, and the SVG
 # text itself when format = "svg" and inline = TRUE (used for the live preview).
-ag_draw <- function(plot, file, format = "svg", width = 5, height = 4, dpi = 300, inline = FALSE) {
+# With geometry = TRUE it also reports where the plotting panel sits in the
+# image and the range of each continuous axis, so axes can be dragged.
+ag_draw <- function(plot, file, format = "svg", width = 5, height = 4, dpi = 300, inline = FALSE, geometry = FALSE) {
   warns <- character()
   dev <- NULL
+  geom <- NULL
   err <- tryCatch({
     withCallingHandlers({
       ag_open_device(file, format, width, height, dpi)
       dev <- grDevices::dev.cur()
-      print(plot)
+      if (geometry && inherits(plot, "ggplot")) {
+        built <- ggplot2::ggplot_build(plot)
+        table <- ggplot2::ggplot_gtable(built)
+        grid::grid.newpage()
+        grid::grid.draw(table)
+        geom <- tryCatch(ag_panel_geometry(built, table, width, height), error = function(e) NULL)
+      } else {
+        print(plot)
+      }
       NULL
     }, warning = function(w) {
       warns <<- c(warns, conditionMessage(w)); invokeRestart("muffleWarning")
@@ -833,7 +844,25 @@ ag_draw <- function(plot, file, format = "svg", width = 5, height = 4, dpi = 300
   finally = if (!is.null(dev)) try(grDevices::dev.off(dev), silent = TRUE))
   out <- list(ok = is.null(err), error = err, warnings = I(unique(warns)))
   if (is.null(err) && inline) out$svg <- paste(readLines(file, warn = FALSE, encoding = "UTF-8"), collapse = "\n")
+  if (!is.null(geom)) out$geometry <- geom
   ag_json(out)
+}
+
+# The panel's edges as fractions of the image (from the top-left corner) and
+# the visible range of the horizontal (h) and vertical (v) axes, in the scale's
+# own units (e.g. log10 units on a log axis). Only for single-panel plots.
+ag_panel_geometry <- function(built, table, width, height) {
+  panels <- table$layout[grepl("^panel", table$layout$name), , drop = FALSE]
+  if (nrow(panels) != 1) return(NULL)
+  grid::seekViewport("layout")
+  grid::pushViewport(grid::viewport(layout.pos.row = panels$t:panels$b, layout.pos.col = panels$l:panels$r))
+  ll <- grid::deviceLoc(grid::unit(0, "npc"), grid::unit(0, "npc"), valueOnly = TRUE)
+  ur <- grid::deviceLoc(grid::unit(1, "npc"), grid::unit(1, "npc"), valueOnly = TRUE)
+  grid::upViewport(0)
+  pp <- built$layout$panel_params[[1]]
+  axis <- function(s) if (is.null(s) || s$is_discrete()) NULL else list(range = I(s$continuous_range))
+  list(left = ll$x / width, right = ur$x / width, top = 1 - ur$y / height, bottom = 1 - ll$y / height,
+       h = axis(pp$x), v = axis(pp$y))
 }
 
 # ---- Project files (.RData) -----------------------------------------------------------------

@@ -307,8 +307,8 @@ export class Engine extends EventTarget {
       const prev = this.renders.get(id);
       if (prev && prev.key === key && prev.ok) return prev;
       const res = JSON.parse(await this.backend.evalString(
-        `ag_draw(${g.rname}, ${rstr(`${TMP}/preview.svg`)}, "svg", ${Number(s.width) || 5}, ${Number(s.height) || 4}, inline = TRUE)`));
-      const out = { ok: res.ok, error: res.error, svg: res.svg, warnings: [...(r.warnings || []), ...[].concat(res.warnings || [])], key };
+        `ag_draw(${g.rname}, ${rstr(`${TMP}/preview.svg`)}, "svg", ${Number(s.width) || 5}, ${Number(s.height) || 4}, inline = TRUE, geometry = TRUE)`));
+      const out = { ok: res.ok, error: res.error, svg: res.svg, geometry: res.geometry || null, warnings: [...(r.warnings || []), ...[].concat(res.warnings || [])], key };
       this.renders.set(id, out);
       return out;
     }, `render:${id}`);
