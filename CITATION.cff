@@ -1,6 +1,6 @@
 cff-version: 1.2.0
 message: "If Agrafeuse contributed to your work, please cite it as below."
-title: "Agrafeuse: a free, open-source tool for scientific graphs and statistics with R"
+title: "Agrafeuse: An open source application for quick quantitative data analysis and visualization"
 type: software
 authors:
   - family-names: Misra

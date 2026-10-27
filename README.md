@@ -2,8 +2,6 @@
 
 # Agrafeuse
 
-*Agrafeuse* is French for stapler: it pins your data, statistics and figures together. The logo is a staple, the same shape as the p value brackets it draws.
-
 **Graphs and statistics with R and ggplot2, in your browser.** A free, open alternative to GraphPad Prism that gives you R's flexibility without writing code, and hands you the code when you want it.
 
 - **No server, no install.** R runs inside the browser tab ([webR](https://docs.r-wasm.org/webr/latest/)). The app is a folder of static files you can host on GitHub Pages or open from your own computer.
@@ -174,7 +172,7 @@ R_SCRIPT=$(which Rscript) node tests/e2e.test.mjs     # drives the UI in Chromiu
 
 If Agrafeuse contributed to your work, please cite it:
 
-> Misra, Paraish S. (2026). Agrafeuse: a free, open-source tool for scientific graphs and statistics with R (Version 0.1.0) [Computer software]. https://github.com/paraish/Agrafeuse
+> Misra, Paraish S. (2026). Agrafeuse: An open source application for quick quantitative data analysis and visualization (Version 0.1.0) [Computer software]. https://github.com/paraish/Agrafeuse
 
 In author-initial styles: Misra PS (Vancouver) or Misra, P. S. (APA).
 
@@ -192,3 +190,7 @@ R, webR and the R packages Agrafeuse loads at run time have their own licenses (
 
 For research use only, not for diagnostic procedures. Provided as is, without warranty.
 Agrafeuse is not affiliated with or endorsed by GraphPad Software. GraphPad Prism is a trademark of GraphPad Software, LLC.
+
+---
+
+Agrafeuse is French for stapler: it pins your data, statistics and figures together.

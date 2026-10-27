@@ -2,7 +2,7 @@
   "name": "agrafeuse",
   "version": "0.1.0",
   "private": true,
-  "description": "Agrafeuse: a free, open-source tool for scientific graphs and statistics with R, running in the browser with webR.",
+  "description": "Agrafeuse: An open source application for quick quantitative data analysis and visualization",
   "type": "module",
   "license": "AGPL-3.0-only",
   "scripts": {

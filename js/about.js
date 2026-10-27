@@ -7,7 +7,7 @@ export const ABOUT = {
   version: '0.1.0',
   author: 'Paraish S. Misra',
   year: 2026,
-  title: 'Agrafeuse: a free, open-source tool for scientific graphs and statistics with R',
+  title: 'Agrafeuse: An open source application for quick quantitative data analysis and visualization',
   url: 'https://github.com/paraish/Agrafeuse',
   site: 'https://paraish.github.io/Agrafeuse/',
   lab: 'https://misralab.ca/',
