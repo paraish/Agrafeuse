@@ -71,6 +71,13 @@ export class Store extends EventTarget {
     this.snapTimer = setTimeout(() => this.takeSnapshot(), 500);
   }
 
+  // Views fill in defaults when they open (e.g. a graph's empty style settings).
+  // Those are not changes to undo: count the project as it is now as unchanged.
+  settle() {
+    clearTimeout(this.snapTimer);
+    this.snapshot = JSON.stringify(this.project);
+  }
+
   takeSnapshot() {
     clearTimeout(this.snapTimer);
     const now = JSON.stringify(this.project);

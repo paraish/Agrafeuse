@@ -12,6 +12,11 @@ import { newDataTable, newTransform, uniqueName, clone } from '../model.js';
 // Whether each table's panel is open, for as long as the page is open.
 const openState = new Map();
 
+// Open a table's pipeline panel (e.g. after the assistant added steps to it).
+export function openPipeline(id) {
+  openState.set(id, true);
+}
+
 export class PipePanel {
   // onShow(view): ask the data view to show 'data' or 'result'.
   constructor(app, item, { onShow }) {

@@ -149,7 +149,7 @@ ag_okabe_ito <- c("#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2",
 # match the dodge width of the graph (Agrafeuse uses 0.8).
 ag_brackets <- function(result, data, x, y, format = "stars", hide_ns = FALSE,
                         y_start = NULL, step = 0.09, tip = 0.02, text_size = 4.5,
-                        colour = "black", linewidth = 0.6, dodge = 0.8) {
+                        colour = "black", linewidth = 0.6, dodge = 0.8, headroom = 0.08) {
   cmp <- result$comparisons
   if (is.null(cmp) || !nrow(cmp)) return(list())
   if (!all(c("group1", "group2", "p") %in% names(cmp))) return(list())
@@ -237,7 +237,7 @@ ag_brackets <- function(result, data, x, y, format = "stars", hide_ns = FALSE,
       colour = colour, linewidth = linewidth),
     ggplot2::annotate("text", x = (lo + hi) / 2, y = yb + ifelse(is_star, 0, 0.012 * rng),
       label = labels, vjust = ifelse(is_star, 0.3, 0), size = text_size, colour = colour),
-    ggplot2::expand_limits(y = max(yb) + 0.08 * rng)
+    ggplot2::expand_limits(y = max(yb) + headroom * rng)
   )
 }
 
@@ -339,8 +339,10 @@ ag_stat_compare <- function(data, x, y, method = "t.test", comparisons = "all", 
                             format = "stars", hide_ns = FALSE, overall = TRUE, position = "top-left",
                             y_start = NULL, step = 0.09, text_size = 4.5, label_size = 4.2) {
   res <- ag_compare(data, x, y, method, comparisons, ref, p_adjust, paired, subject, within)
+  # Leave room above the brackets for the overall result when it goes at the top.
+  label_on_top <- overall && !is.null(res$label) && grepl("top", position)
   out <- ag_brackets(res, data, x, y, format = format, hide_ns = hide_ns, y_start = y_start,
-                     step = step, text_size = text_size)
+                     step = step, text_size = text_size, headroom = if (label_on_top) 0.24 else 0.08)
   if (overall && !is.null(res$label)) out <- c(out, list(ag_corner_label(res$label, position, size = label_size)))
   out
 }

@@ -6,6 +6,7 @@ import { mkdtempSync, writeFileSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createRequire } from 'node:module';
+import { startMock } from './mock-llm.mjs';
 
 const require = createRequire(import.meta.url);
 let chromium;
@@ -17,6 +18,7 @@ const PORT = 8799;
 const TOKEN = 'e2e-token';
 const root = new URL('..', import.meta.url).pathname;
 const tmp = mkdtempSync(join(tmpdir(), 'ag-e2e-'));
+const mock = startMock(8798); // an OpenAI-compatible server for the assistant
 const server = spawn('node', ['dev/r-bridge.mjs'], { cwd: root, env: { ...process.env, PORT: String(PORT), AGRAFEUSE_TOKEN: TOKEN }, stdio: ['ignore', 'pipe', 'inherit'] });
 await new Promise((res) => server.stdout.on('data', (d) => { if (String(d).includes('http')) res(); }));
 
@@ -362,6 +364,45 @@ try {
   await page.waitForTimeout(300);
   check(await page.locator('.nav li[data-id]').count() === count, 'undo brings it back');
 
+  // --- the assistant ---------------------------------------------------------------------------
+  await page.click('[data-k="cp-open"]');
+  check(await page.isVisible('[data-k="cp-start"]') && mock.state.count === 0, 'assistant opens on its setup; nothing is downloaded until asked');
+  await page.click('[data-k="cp-start"]');
+  await page.waitForSelector('.toast.error');
+  check(/WebGPU|graphics card/.test(await page.textContent('.toast.error')), 'in-browser model: a clear message where WebGPU is missing');
+  await page.click('[data-k="cp-backend-api"]');
+  await page.selectOption('[data-k="cp-preset"]', 'custom');
+  await page.fill('[data-k="cp-base"]', 'http://127.0.0.1:8798/v1');
+  await page.click('[data-k="cp-list"]');
+  await page.waitForFunction(() => document.querySelector('[data-k="cp-api-model"]')?.value === 'mock-model');
+  await page.click('[data-k="cp-connect"]');
+  await page.fill('[data-k="cp-input"]', 'Which test should I use?');
+  await page.press('[data-k="cp-input"]', 'Enter');
+  await page.waitForSelector('.cp-bot');
+  check(/one-way ANOVA/.test(await page.textContent('.cp-bot')), 'assistant answers a question (OpenAI-compatible server)');
+  const sys = mock.state.last.messages[0].content;
+  check(sys.includes('"Plant growth (long)"') && sys.includes('weight (number)') && sys.includes('"do":"new_graph"'), 'the model is told the project and the actions');
+  check(sys.includes('First rows of'), 'with permission (a server on this computer), it also sees data values');
+  const navBefore2 = await page.locator('.nav li[data-id]').count();
+  await page.fill('[data-k="cp-input"]', 'Make a bar graph of weight and compare the groups');
+  await page.press('[data-k="cp-input"]', 'Enter');
+  await page.waitForSelector('.cp-plan button:has-text("Apply")');
+  check(await page.locator('.cp-plan li').count() === 4 && await page.locator('.nav li[data-id]').count() === navBefore2, 'the assistant proposes steps and changes nothing yet');
+  await page.click('.cp-plan button:has-text("Apply")');
+  await settle();
+  const made = await page.evaluate(() => window.agrafeuse.engine.result(window.agrafeuse.store.selected)?.code || '');
+  check(await page.inputValue('.title-input') === 'Weight bars' && made.includes('method = "wilcox.test"') && made.includes('labs(y = "Dry weight (g)")'),
+    'applied: a new graph with compared groups and a Y title');
+  check(await page.locator('.cp-plan li.ok').count() === 3 && await page.locator('.cp-plan li.bad').count() === 1, 'a step the app cannot do is skipped and explained');
+  await page.click('.cp-plan button:has-text("Undo")');
+  await page.waitForTimeout(300);
+  check(await page.locator('.nav li[data-id]').count() === navBefore2, 'one undo takes back everything the assistant did');
+  await page.uncheck('[data-k="cp-share"]');
+  await page.fill('[data-k="cp-input"]', 'Which test should I use?');
+  await page.press('[data-k="cp-input"]', 'Enter');
+  await page.waitForFunction((n) => document.querySelectorAll('.cp-bot').length >= n, 3);
+  check(!mock.state.last.messages[0].content.includes('First rows of'), 'without permission, no data values are sent');
+
   check(errors.length === 0, `no errors in the browser console${errors.length ? ': ' + errors.join(' | ') : ''}`);
 } catch (e) {
   console.error(e);
@@ -371,6 +412,7 @@ try {
 } finally {
   await browser.close();
   server.kill();
+  mock.close();
 }
 console.log(failures ? `\n${failures} failure(s)` : '\nall passed');
 process.exit(failures ? 1 : 0);

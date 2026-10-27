@@ -11,6 +11,7 @@ import { ABOUT, CITATION, AI_CREDIT } from '../about.js';
 import { parseDelimited, tableFromRows } from '../codegen/data.js';
 import { TESTS, TEST_CATEGORIES } from '../codegen/stats.js';
 import { projectScript } from '../codegen/script.js';
+import { Copilot } from './copilot.js';
 import { DataView } from './dataView.js';
 import { TransformView } from './transformView.js';
 import { GraphView } from './graphView.js';
@@ -75,7 +76,8 @@ export class App {
       this.status);
     this.nav = h('nav.nav', { 'aria-label': 'Project' });
     this.main = h('main.main');
-    fill(this.root, top, this.nav, this.main, this.footer());
+    this.copilot = new Copilot(this);
+    fill(this.root, top, this.nav, this.main, this.copilot.el, this.footer());
     this.updateHistoryButtons();
   }
 
@@ -100,7 +102,7 @@ export class App {
         'Statistics are computed by R; please also cite R and the R packages your analysis used. ',
         this.versionsEl = h('span.versions', this.versionsText()), ' ',
         'Free software under the ', link(ABOUT.license, 'GNU AGPL v3'), '; ',
-        link(ABOUT.url, 'source code'), '. Your data stays on your computer.'));
+        link(ABOUT.url, 'source code'), '. Your data stays on your computer, unless you connect the assistant to an online service.'));
   }
 
   // "R 4.6.0 (webR 0.6.0) with ggplot2 3.5.2, dplyr 1.1.4…": what this session computes with.
@@ -147,6 +149,7 @@ export class App {
   }
 
   mount() {
+    this.store.takeSnapshot(); // keep any change made just before switching
     this.view?.destroy?.();
     const id = this.store.selected;
     const it = id && id !== '__code' ? getItem(this.store.project, id) : null;
@@ -157,6 +160,7 @@ export class App {
     else if (it.kind === 'analysis') this.view = new StatsView(this, it);
     else this.view = new GraphView(this, it);
     fill(this.main, this.view.el);
+    this.store.settle();
   }
 
   welcome() {

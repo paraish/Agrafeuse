@@ -22,6 +22,7 @@
 | **Statistics** | t tests (unpaired / Welch, paired, ratio paired, one-sample), Mann-Whitney, Wilcoxon, one-way ANOVA with Tukey / Dunnett / Šidák / Bonferroni / Holm / FDR, Welch's ANOVA with Games-Howell, Kruskal-Wallis with Dunn's test, repeated-measures ANOVA, Friedman, two-way ANOVA (Type III or I) with simple-effects comparisons, mixed-effects models, correlation (Pearson, Spearman, Kendall), regression (linear, polynomial, log, exponential, power, 4-parameter dose-response with EC50, Michaelis-Menten, one-phase decay), descriptive statistics and normality tests. Each test has a plain-language explanation. |
 | **Stats on graphs** | **Compare groups** right on the graph, like ggpubr's `stat_compare_means`: Welch's or Student's t tests or Mann-Whitney / Wilcoxon tests, all pairs or each against a control, paired by subject if needed, between the groups on the X axis or between side-by-side groups within each X group, with Holm / Bonferroni / FDR adjustment and the overall test (ANOVA, Welch's ANOVA, Kruskal-Wallis, Friedman) in a corner. Or draw the results of a full analysis: P value brackets (stars or numbers, stacked automatically), result text in a corner, fitted curves with confidence bands. |
 | **Text boxes** | Add text anywhere on a graph (several lines, size, colour, bold / italic, alignment, with or without a box), and drag it into place on the preview, or give its position in axis units. |
+| **Assistant** | A pane on the right of every screen: ask in plain words ("compare weight between the groups and show it on a bar graph", "which test should I use?"). The assistant proposes steps (pipeline steps, analyses, graphs, compared groups, titles…); you check them and apply them, and one undo takes them all back. It runs a free model in your browser (opt-in download) or connects to LM Studio, Ollama or any OpenAI-compatible API. |
 | **Export** | PDF, SVG, PNG or TIFF at any size and resolution. SVG keeps its text as text, so it can be edited in Illustrator or Inkscape (through the svglite package; if that cannot load, the text is drawn as shapes). The R script for the whole project; the project as `.RData`. |
 
 | Data entry | Transforms | Statistics |
@@ -48,6 +49,18 @@ python3 -m http.server 8000      # then open http://localhost:8000
 ```
 
 The first start downloads R (about 30 MB) and a few R packages from the webR package repository. Your browser keeps them cached, so later starts take a few seconds. An example project (one dataset, taken through a transform, a one-way ANOVA and a graph) opens on first visit; **New** starts a blank one.
+
+## The assistant
+
+Open it from the **Assistant** strip on the right, and choose a model once:
+
+- **A model in this browser** (free, private). Runs with [WebLLM](https://github.com/mlc-ai/web-llm) on your graphics card: nothing leaves your computer. Nothing is downloaded until you pick a model and click **Download and start** (2–6 GB the first time; the browser keeps it). Needs WebGPU: recent Chrome or Edge, and a reasonable graphics card. Qwen3 4B is a good default; Qwen3 8B is better if your card can take it.
+- **LM Studio or Ollama on your computer** (free, private). Start the server and let this site call it: in LM Studio, *Developer → Start server* and turn on *Enable CORS*; for Ollama, `OLLAMA_ORIGINS="https://paraish.github.io" ollama serve`. Your browser may ask whether the site may reach apps on your computer: allow it. Larger local models (7–14B) answer better than the in-browser ones.
+- **An online API** with your own key: OpenAI, OpenRouter (has free models), Google Gemini (free tier) or any OpenAI-compatible server. The key stays in your browser (and only if you tick *Remember*).
+
+What the model sees: the names of your items, their columns, column types and group names, and what you ask. **Data values and analysis results are only included if you allow it** (the *Let it see data values and results* box, on by default only when the model runs on your computer). With an online API, whatever is sent is handled under that company's rules.
+
+The assistant does not change anything by itself: it proposes steps, and you choose which to apply. Every step is an ordinary step, layer or analysis you can inspect and edit, with its R code; one undo removes a whole batch. Small models make mistakes, so check the plan, and the choice of test, before applying.
 
 ## Using your files in R
 
@@ -137,7 +150,8 @@ js/main.js                  start-up
 js/model.js                 the project: items, R names, dependencies
 js/codegen/                 project → R code (data, transforms, graphs, stats, whole script)
 js/engine.js                runs R (webR or the bridge); caches results per item
-js/ui/                      views: data grid, transforms, graph builder, statistics, dialogs
+js/ui/                      views: data grid, transforms, graph builder, statistics, dialogs, assistant
+js/copilot/                 the assistant: model connections, prompt, actions it can take
 js/example.js               the example project
 js/about.js                 name, version, citation and credits (shown in the footer)
 assets/                     the stapler icon
