@@ -32,7 +32,17 @@ export class Grid {
     this.el.addEventListener('mousedown', (e) => this.onMouseDown(e));
     this.el.addEventListener('mouseover', (e) => this.onMouseOver(e));
     this.el.addEventListener('dblclick', (e) => this.onDblClick(e));
-    window.addEventListener('mouseup', this.onMouseUp = () => { this.dragging = false; });
+    window.addEventListener('mouseup', this.onMouseUp = () => {
+      this.dragging = false;
+      // A plain click on a column name opens it for renaming (a drag across names still selects columns).
+      const c = this.headerClick;
+      this.headerClick = null;
+      const s = this.sel;
+      if (c != null && !this.editing && s.r === -1 && s.r2 === -1 && s.c === c && s.c2 === c) {
+        this.startEdit();
+        this.editor.select();
+      }
+    });
     this.el.addEventListener('copy', (e) => this.onCopy(e));
     this.el.addEventListener('cut', (e) => { this.onCopy(e); this.clearSelection(); });
     this.el.addEventListener('paste', (e) => this.onPaste(e));
@@ -122,7 +132,7 @@ export class Grid {
       h('th.corner', { title: 'Select all', 'data-r': 'all' }, h('div.corner-label', 'name'), h('div.corner-label', 'type')),
       h('th.colhead.rowname-head', {
         'data-r': -1, 'data-c': RN, class: r0 === -1 && c0 === RN ? 'sel' : '',
-        title: 'Optional labels for each row, e.g. subject or sample IDs. In R they become a "row_name" column.',
+        title: 'Optional labels for each row, e.g. subject or sample IDs: click a cell below and type. In R they become a "row_name" column.',
       }, h('div.colname', 'Row names'), h('div.colsub', 'labels (optional)')),
     ];
     for (let c = 0; c < ncolShown; c++) {
@@ -138,7 +148,8 @@ export class Grid {
       headCells.push(h('th.colhead', {
         'data-r': -1, 'data-c': c,
         class: [ghost ? 'ghost' : '', selected ? 'sel' : '', this.types[c] === 'numeric' ? 'num' : ''].join(' '),
-      }, h('div.colname', ghost ? '+ new column' : (col.name || `Column ${c + 1}`)), typeSel));
+      }, h('div.colname', { title: ghost ? 'Add a column' : 'Click to rename' },
+        ghost ? '+ new column' : (col.name || `Column ${c + 1}`)), typeSel));
     }
 
     const body = [h('tr.spacer', h('td', { colspan: ncolShown + 2, style: { height: `${first * ROW_H}px` } }))];
@@ -315,6 +326,7 @@ export class Grid {
     }
     this.select(t.r, t.c, e.shiftKey);
     this.dragging = true;
+    this.headerClick = t.r === -1 && t.c >= 0 && !e.shiftKey ? t.c : null;
   }
 
   onMouseOver(e) {

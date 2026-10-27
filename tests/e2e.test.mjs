@@ -77,8 +77,11 @@ try {
   });
   check(dcode.includes('row_name = factor(c("Mouse A", "Mouse B", "Mouse C"'), 'row names become a row_name column in R');
 
-  // Rename a column by typing on its header.
-  await page.click('.sheet th[data-r="-1"][data-c="1"]');
+  // Rename a column: one click on its name opens it for editing, with the old name selected.
+  const oldName = await page.textContent('.sheet th[data-c="1"] .colname');
+  await page.click('.sheet th[data-r="-1"][data-c="1"] .colname');
+  check(await page.isVisible('.cell-editor') && await page.inputValue('.cell-editor') === oldName,
+    'one click on a column name opens it for renaming');
   await page.keyboard.type('Drug X');
   await page.keyboard.press('Enter');
   check((await page.textContent('.sheet th[data-c="1"] .colname')) === 'Drug X', 'renamed a column from the header');

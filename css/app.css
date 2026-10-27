@@ -261,6 +261,8 @@ details.about p { margin: 8px 0 0; }
 .sheet .colhead { cursor: pointer; }
 .sheet .colhead.sel { background: var(--accent-weak); }
 .sheet .colname { overflow: hidden; text-overflow: ellipsis; padding: 2px 2px 3px; }
+.sheet th.colhead:not(.ghost):not(.rowname-head) .colname { cursor: text; border-radius: 4px; }
+.sheet th.colhead:not(.ghost):not(.rowname-head) .colname:hover { background: var(--panel); box-shadow: inset 0 0 0 1px var(--border-strong); }
 .sheet .coltype { height: 22px; font-size: 11.5px; padding: 0 2px; color: var(--muted); width: 100%; border-color: var(--border); }
 .sheet th.ghost .colname { font-weight: 500; color: var(--accent); }
 .sheet .rowhead, .sheet .corner { position: sticky; left: 0; z-index: 1; background: var(--panel-2); color: var(--faint); font-weight: 500; text-align: right; font-size: 12px; cursor: pointer; }
@@ -268,7 +270,7 @@ details.about p { margin: 8px 0 0; }
 .sheet .rowhead.sel { background: var(--accent-weak); color: var(--accent); }
 .sheet tr.spacer td { padding: 0; border: 0; height: auto; }
 /* row names: a label column pinned next to the row numbers */
-.sheet td.rowname { position: sticky; left: 46px; z-index: 1; background: var(--panel-2); font-weight: 500; border-right: 2px solid var(--border-strong); cursor: cell; }
+.sheet td.rowname { position: sticky; left: 46px; z-index: 1; background: var(--panel-2); font-weight: 500; border-right: 2px solid var(--border-strong); cursor: text; }
 .sheet td.rowname.sel { background: color-mix(in srgb, var(--accent) 14%, var(--panel-2)); }
 .sheet th.rowname-head { position: sticky; left: 46px; z-index: 3; border-right: 2px solid var(--border-strong); }
 .sheet th.rowname-head .colname { font-style: italic; color: var(--muted); }
