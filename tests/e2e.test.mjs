@@ -173,6 +173,61 @@ try {
     check(await page.locator('.output .message.error').count() === 0, `switch test to ${test}`);
   }
 
+  // --- dplyr pipeline stapled to a data table ------------------------------------------------------
+  await page.click('.nav-item:has(.name:text-is("Plant growth"))');
+  await page.click('.pipe-strip');
+  check(await page.isVisible('.pipe [data-k="pipe-add"]'), 'pipeline panel opens from the strip on the right');
+  const addStep = async (verb) => { await page.click('[data-k="pipe-add"]'); await page.click(`.verb-menu [data-verb="${verb}"]`); await settle(); };
+  const verbs = () => page.$$eval('.pipe-verb', (els) => els.map((e) => e.textContent).join(' '));
+  await addStep('pivot_longer');
+  await addStep('filter');
+  await page.selectOption('[data-k="s1-col"]', 'value');
+  await page.selectOption('[data-k="s1-op"]', '>');
+  await page.fill('[data-k="s1-val"]', '4.5');
+  await settle();
+  await addStep('summarise');
+  await page.selectOption('[data-k="s2-col"]', 'value');
+  await page.check('[data-k="s2-group_by:group"]');
+  await settle();
+  check(await verbs() === 'pivot_longer filter summarise', 'three steps added from the + menu');
+  check((await page.textContent('.pipe-step[data-step="1"] .pipe-dims')) === '23 × 2', 'each step shows rows × columns after it');
+  check(await page.isVisible('.pipe-result') && /3 rows × 5 columns/.test(await page.textContent('.pipe-result .out-head')), 'pipeline result shows in the main pane');
+  check(!(await page.isVisible('.grid-host')), 'grid is hidden while the result shows');
+  await page.click('[data-k="tab-data"]');
+  check(await page.isVisible('.grid-host') && !(await page.isVisible('.pipe-result')), '"Data table" tab shows the grid again');
+  // Drag summarise to the top: it cannot work there, and the problem is pinned to it.
+  await page.dragAndDrop('.pipe-step[data-step="2"] .pipe-row', '.pipe-step[data-step="0"] .pipe-row', { targetPosition: { x: 40, y: 4 } });
+  await settle();
+  check(await verbs() === 'summarise pivot_longer filter', 'drag a step to reorder');
+  check(await page.locator('.pipe-step.error[data-step="0"]').count() === 1 && /Step 1 \(summarise\)/.test(await page.textContent('.pipe-result')), 'a failing step is flagged');
+  const navBefore = await page.locator('.nav-item').count();
+  await page.click('[data-k="pipe-to-table"]');
+  await page.waitForSelector('.toast.error');
+  check(await page.locator('.nav-item').count() === navBefore, 'no new table while a step fails');
+  check(await page.locator('.pipe-step.open[data-step="0"]').count() === 1, 'the step being edited stays open when moved');
+  await page.click('[data-k="s0-down"]');
+  await page.click('[data-k="s1-down"]');
+  await settle();
+  check(await verbs() === 'pivot_longer filter summarise', 'move buttons reorder too');
+  await page.click('.pipe-step[data-step="1"] .pipe-row');
+  await page.click('[data-k="s1-onoff"]');
+  await settle();
+  const ns = await page.$$eval('.pipe-result table.results tbody tr', (trs) => trs.map((tr) => tr.lastChild.textContent));
+  check(ns.join(',') === '10,10,10', `a step can be turned off (n = ${ns.join(', ')})`);
+  await page.click('[data-k="s1-onoff"]');
+  await settle();
+  await page.click('[data-k="pipe-to-table"]');
+  await settle();
+  check(await page.inputValue('.title-input') === 'Plant growth (result)' && (await page.textContent('.data-info')).includes('3 rows × 5 columns'),
+    'pipeline result became a new data table');
+  await page.click('.nav-item:has(.name:text-is("Plant growth"))');
+  await page.waitForSelector('.pipe-step');
+  check(await verbs() === 'pivot_longer filter summarise', 'the pipeline stays with its table');
+  await page.click('[data-k="pipe-to-transform"]');
+  await settle();
+  check(await page.inputValue('.title-input') === 'Plant growth (pipeline)' && /3 rows × 5 columns/.test(await page.textContent('.out-head')),
+    'pipeline became a linked transform');
+
   // --- code view ------------------------------------------------------------------------------------
   await page.click('.nav-item:has-text("Whole project as R code")');
   const script = await page.textContent('pre.code');

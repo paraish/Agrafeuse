@@ -26,6 +26,18 @@ ok("normality", print(ag_normality(d, "weight", "group")))
 ok("result json", cat(substr(ag_result_json(r1), 1, 300), "\n"))
 ok("describe", cat(ag_describe(tg), "\n"))
 ok("preview", cat(substr(ag_preview(tg, 3), 1, 300), "\n"))
+ok("pipe eval", {
+  r <- jsonlite::fromJSON(ag_pipe_eval(tg, c("filter(len > 10)", "summarise(m = mean(len), .by = supp)")))
+  stopifnot(is.null(r$failed), length(r$stages$nrow) == 2, r$table$nrow == 2, r$stages$nrow[1] == sum(tg$len > 10))
+})
+ok("pipe eval: failing step", {
+  r <- jsonlite::fromJSON(ag_pipe_eval(tg, c("arrange(len)", "filter(nope > 1)", "slice_head(n = 1)")))
+  stopifnot(r$failed == 2, grepl("nope", r$error), r$table$nrow == nrow(tg))
+})
+ok("pipe eval: no steps, full precision", {
+  r <- jsonlite::fromJSON(ag_pipe_eval(data.frame(x = 1/3), character(), Inf, 15))
+  stopifnot(r$table$rows[[1]] == "0.333333333333333")
+})
 ok("eval_json warning", cat(ag_eval_json("x <- as.numeric('a'); 'hi'"), "\n"))
 ok("eval_json error", cat(ag_eval_json("stop('boom')"), "\n"))
 ok("eval_json error call", cat(ag_eval_json("log(-1:'a')"), "\n"))

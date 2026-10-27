@@ -8,6 +8,7 @@ import { rstr, rstrvec } from './rcode.js';
 import { getItem, depsOf, itemCode, itemPackages, topoOrder } from './model.js';
 import { usesMixedModel } from './codegen/stats.js';
 import { dataSchema } from './codegen/data.js';
+import { pipePlan } from './codegen/transform.js';
 import { BASE_PACKAGES } from './codegen/script.js';
 
 const TMP = '/tmp/agrafeuse';
@@ -288,6 +289,31 @@ export class Engine extends EventTarget {
       const res = await this.run(`ag_preview(${item.rname}, ${n})`);
       return res.ok ? { ok: true, table: JSON.parse(res.value), warnings: r.warnings } : res;
     });
+  }
+
+  // Run a data table's own pipeline (item.pipe.steps) one step at a time.
+  // Returns { ok, plan, input, table, failed, error }: plan has one entry per
+  // step with its state (run / off / incomplete / error / skipped) and the
+  // columns after it; table is the first rows of the result (every row if full).
+  pipe(id, { full = false } = {}) {
+    return this.enqueue(async () => {
+      const r = await this.ensureNow(id);
+      if (!r.ok) return { ok: false, error: r.error };
+      const item = getItem(this.getProject(), id);
+      const plan = pipePlan(item.pipe?.steps || [], this.schemaOf(id));
+      const run = plan.filter((p) => p.state === 'run');
+      const res = await this.run(`ag_pipe_eval(${item.rname}, ${rstrvec(run.map((p) => p.code))}, ${full ? 'Inf, 15' : '200, 6'})`);
+      if (!res.ok) return { ok: false, error: res.error, plan };
+      const out = JSON.parse(res.value);
+      run.forEach((p, j) => {
+        if (out.failed && j + 1 > out.failed) p.state = 'skipped';
+        else if (out.failed === j + 1) { p.state = 'error'; p.error = out.error; } else p.stage = out.stages[j];
+      });
+      return {
+        ok: true, plan, input: out.input, table: out.table, warnings: res.warnings,
+        failed: out.failed ? run[out.failed - 1].index : null, error: out.error,
+      };
+    }, full ? null : `pipe:${id}`);
   }
 
   // Draw a graph as SVG for the on-screen preview. Repeated requests for the

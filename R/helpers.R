@@ -746,7 +746,7 @@ ag_col_type <- function(v) {
 }
 
 # Column names, types and levels of a data frame, for the app's dropdowns.
-ag_describe <- function(df) {
+ag_describe_list <- function(df) {
   if (!is.data.frame(df)) stop("not a data frame")
   cols <- lapply(names(df), function(nm) {
     v <- df[[nm]]; type <- ag_col_type(v)
@@ -755,32 +755,61 @@ ag_describe <- function(df) {
     if (type == "numeric") { u <- unique(v[!is.na(v)]); if (length(u) <= 30) lev <- as.character(sort(u)) }
     list(name = nm, type = type, levels = I(lev %||% character()), missing = sum(is.na(v)))
   })
-  ag_json(list(nrow = nrow(df), columns = cols))
+  list(nrow = nrow(df), columns = cols)
 }
 
-ag_cell_text <- function(v) {
-  if (is.numeric(v)) out <- as.character(signif(v, 6)) else out <- as.character(v)
+ag_describe <- function(df) ag_json(ag_describe_list(df))
+
+ag_cell_text <- function(v, digits = 15) {
+  if (is.numeric(v)) out <- as.character(signif(v, digits)) else out <- as.character(v)
   out[is.na(v)] <- ""
   out
 }
 
-# First rows of a data frame as text, for previews and for importing into the grid.
-ag_table_json <- function(df, n = Inf) {
+# First rows of a data frame as text, for importing into the grid (full
+# precision) and for previews (digits = 6).
+ag_table_list <- function(df, n = Inf, digits = 15) {
   df <- as.data.frame(df, check.names = FALSE, stringsAsFactors = FALSE)
   if (is.finite(n)) df <- utils::head(df, n)
   cols <- lapply(names(df), function(nm) list(name = nm, type = ag_col_type(df[[nm]]),
     levels = if (is.factor(df[[nm]])) I(levels(df[[nm]])) else I(character())))
   rows <- if (nrow(df)) do.call(mapply, c(list(FUN = function(...) I(c(...)), SIMPLIFY = FALSE, USE.NAMES = FALSE),
-                                         lapply(df, ag_cell_text))) else list()
+                                         lapply(df, ag_cell_text, digits = digits))) else list()
   out <- list(columns = cols, rows = rows)
   # Real row names (e.g. car models in mtcars), not just 1, 2, 3…
   if (is.character(attr(df, "row.names"))) out$row_names <- I(rownames(df))
+  out
+}
+
+ag_table_json <- function(df, n = Inf) ag_json(ag_table_list(df, n))
+
+ag_preview <- function(df, n = 200) {
+  out <- ag_table_list(df, n, digits = 6)
+  out$nrow <- nrow(df)
   ag_json(out)
 }
 
-ag_preview <- function(df, n = 200) {
-  out <- jsonlite::fromJSON(ag_table_json(df, n), simplifyVector = FALSE)
-  out$nrow <- nrow(df)
+# A data table's own pipeline, run one step at a time so that a problem can be
+# pinned to its step. `steps` holds each step's code, to follow `df |>`.
+# Returns the columns after every step and the first `n` rows of the result.
+ag_pipe_eval <- function(df, steps, n = 200, digits = 6) {
+  out <- list(input = ag_describe_list(df), stages = list(), failed = NULL, error = NULL)
+  for (i in seq_along(steps)) {
+    env <- new.env(parent = globalenv())
+    env$.ag_in <- df
+    res <- tryCatch(eval(parse(text = paste(".ag_in |>", steps[[i]]), keep.source = FALSE)[[1]], env),
+                    error = function(e) e)
+    if (!inherits(res, "error") && !is.data.frame(res)) res <- simpleError("This step did not return a table.")
+    if (inherits(res, "error")) {
+      out$failed <- i
+      out$error <- conditionMessage(res)
+      break
+    }
+    df <- res
+    out$stages[[i]] <- ag_describe_list(df)
+  }
+  out$table <- ag_table_list(df, n, digits)
+  out$table$nrow <- nrow(df)
   ag_json(out)
 }
 
@@ -892,7 +921,7 @@ ag_load_rdata <- function(file) {
   for (nm in setdiff(nms, c(".agrafeuse_project", "print.ag_result"))) {
     obj <- get(nm, envir = env)
     if (is.matrix(obj) && length(dim(obj)) == 2) obj <- as.data.frame(obj)
-    if (is.data.frame(obj)) frames[[nm]] <- jsonlite::fromJSON(ag_table_json(obj), simplifyVector = FALSE)
+    if (is.data.frame(obj)) frames[[nm]] <- ag_table_list(obj)
   }
   ag_json(list(project = project, frames = frames, objects = I(nms)))
 }

@@ -71,6 +71,20 @@ const trSum = newTransform(p, tooth.id, [{ type: 'summarise', group_by: ['supple
 const trWide = newTransform(p, trSum.id, [{ type: 'select', columns: ['supplement', 'dose', 'mean'] }, { type: 'pivot_wider', names_from: 'supplement', values_from: 'mean' }], 'Tooth wide');
 newTransform(p, trWide.id, [{ type: 'transpose', names_col: 'dose' }], 'Tooth transposed');
 newTransform(p, plant.id, [{ type: 'transpose' }], 'Plant transposed');
+newTransform(p, tooth.id, [
+  { type: 'filter', op: 'expr', expr: 'length > 10 & dose != 2' },
+  { type: 'mutate', name: 'double', expr: 'length * 2' },
+  { type: 'filter', column: 'double', op: '>=', value: '20' }, // made by a step: numeric from its value
+  { type: 'slice', mode: 'max', n: 2, column: 'length', by: ['supplement'] },
+  { type: 'distinct', columns: ['supplement'], keep_all: true },
+], 'Tooth more verbs');
+newTransform(p, tooth.id, [{ type: 'count', columns: ['supplement', 'dose'], sort: true }, { type: 'slice', mode: 'head', n: 3 }], 'Tooth counts');
+newTransform(p, tooth.id, [
+  { type: 'distinct', columns: [] },
+  { type: 'slice', mode: 'tail', n: 4, by: ['dose'] },
+  { type: 'slice', mode: 'min', n: 1, column: 'length' },
+  { type: 'count', columns: [] },
+], 'Tooth slices');
 
 // Graphs: every geom, several settings.
 const map = (c) => ({ mode: 'col', col: c });
