@@ -12,8 +12,11 @@ export const ABOUT = {
   site: 'https://paraish.github.io/Agrafeuse/',
   lab: 'https://misralab.ca/',
   license: 'https://www.gnu.org/licenses/agpl-3.0.html',
+  doi: '10.5281/zenodo.23693687', // Zenodo, for version 0.1.0
 };
 
-export const CITATION = `Misra, Paraish S. (${ABOUT.year}). ${ABOUT.title} (Version ${ABOUT.version}) [Computer software]. ${ABOUT.url}`;
+export const DOI_URL = `https://doi.org/${ABOUT.doi}`;
+
+export const CITATION = `Misra, Paraish S. (${ABOUT.year}). ${ABOUT.title} (Version ${ABOUT.version}) [Computer software]. Zenodo. ${DOI_URL}`;
 
 export const AI_CREDIT = `Developed by ${ABOUT.author} with AI-assisted programming (Claude, Anthropic).`;

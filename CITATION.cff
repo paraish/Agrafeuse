@@ -6,10 +6,15 @@ authors:
   - family-names: Misra
     given-names: Paraish S.
 version: 0.1.0
+doi: 10.5281/zenodo.23693687
 date-released: 2026-10-26
 license: AGPL-3.0-only
 repository-code: "https://github.com/paraish/Agrafeuse"
 url: "https://paraish.github.io/Agrafeuse/"
+identifiers:
+  - type: doi
+    value: 10.5281/zenodo.23693687
+    description: "Version 0.1.0, archived on Zenodo"
 keywords:
   - statistics
   - data visualization

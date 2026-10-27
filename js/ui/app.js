@@ -7,7 +7,7 @@ import {
   newDataTable, newTransform, newAnalysis, datasets, emptyProject,
 } from '../model.js';
 import { exampleProject } from '../example.js';
-import { ABOUT, CITATION, AI_CREDIT } from '../about.js';
+import { ABOUT, CITATION, AI_CREDIT, DOI_URL } from '../about.js';
 import { parseDelimited, tableFromRows } from '../codegen/data.js';
 import { TESTS, TEST_CATEGORIES } from '../codegen/stats.js';
 import { projectScript } from '../codegen/script.js';
@@ -85,7 +85,8 @@ export class App {
   // notice (GNU AGPL v3 section 7(b); see NOTICE).
   footer() {
     const link = (href, text) => h('a', { href, target: '_blank', rel: 'noopener' }, text);
-    const citeText = h('span.cite-text', CITATION);
+    // The citation, with its DOI as a link.
+    const citeText = h('span.cite-text', CITATION.replace(DOI_URL, ''), link(DOI_URL, DOI_URL));
     const copy = () => {
       const fallback = () => {
         window.getSelection().selectAllChildren(citeText);

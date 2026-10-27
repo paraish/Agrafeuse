@@ -2,6 +2,8 @@
 
 # Agrafeuse
 
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.23693687.svg)](https://doi.org/10.5281/zenodo.23693687)
+
 **Graphs and statistics with R and ggplot2, in your browser.** Point and click to build figures and run statistics, with the flexibility of R underneath: no code needed, and the code is there when you want it.
 
 - **No server, no install.** R runs inside the browser tab ([webR](https://docs.r-wasm.org/webr/latest/)). The app is a folder of static files you can host on GitHub Pages or open from your own computer.
@@ -192,7 +194,9 @@ R_SCRIPT=$(which Rscript) node tests/e2e.test.mjs     # drives the UI in Chromiu
 
 If Agrafeuse contributed to your work, please cite it:
 
-> Misra, Paraish S. (2026). Agrafeuse: An open source application for quick quantitative data analysis and visualization (Version 0.1.0) [Computer software]. https://github.com/paraish/Agrafeuse
+> Misra, Paraish S. (2026). Agrafeuse: An open source application for quick quantitative data analysis and visualization (Version 0.1.0) [Computer software]. Zenodo. https://doi.org/10.5281/zenodo.23693687
+
+DOI: [10.5281/zenodo.23693687](https://doi.org/10.5281/zenodo.23693687) (archived on Zenodo). Source code: https://github.com/paraish/Agrafeuse
 
 In author-initial styles: Misra PS (Vancouver) or Misra, P. S. (APA).
 
