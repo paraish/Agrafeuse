@@ -109,6 +109,16 @@ newGraph(p, { name: 'Mixed brackets', layers: [
   { id: 'l2', geom: 'mean_connect', dataset: rm.id, aes: { x: map('time'), y: map('Body weight'), colour: map('genotype') } }],
   annotations: [{ id: 'a1', kind: 'brackets', analysis: mixed.id, format: 'p', hide_ns: false }, { id: 'a2', kind: 'label', analysis: mixed.id, position: 'bottom-right' }] });
 
+// Row names typed in the grid: kept through wide → long and used as subject IDs.
+const paired = newDataTable(p, {
+  name: 'Paired with row names',
+  columns: [{ name: 'Before', type: 'auto' }, { name: 'After', type: 'auto' }],
+  rows: [['5.1', '6.0'], ['4.8', '5.9'], ['5.5', '6.4'], ['5.0', '5.2'], ['4.9', '6.1']],
+  rowNames: ['Mouse 1', 'Mouse 2', 'Mouse 3', 'Mouse 4', 'Mouse 5'],
+});
+const pairedLong = newTransform(p, paired.id, [{ type: 'pivot_longer', cols: ['Before', 'After'], names_to: 'time', values_to: 'weight', drop_na: true }], 'Paired long');
+add('ttest_paired', pairedLong, { layout: 'long', y: 'weight', group: 'time', subject: 'row_name', groups: ['Before', 'After'] });
+
 // Formatting options from the panel under the graph.
 newGraph(p, {
   name: 'Styled',

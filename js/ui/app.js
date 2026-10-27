@@ -282,6 +282,7 @@ export class App {
           name: uniqueName(p, rName),
           columns: t.columns.map((c) => ({ name: c.name, type: c.type === 'numeric' ? 'auto' : 'text' })),
           rows: t.rows,
+          rowNames: t.row_names || [],
         });
       } catch (e) { toast(`Could not load ${rName}: ${e.message}`, 'error'); return; }
     }
@@ -487,7 +488,7 @@ export class App {
       const p = this.store.project;
       let last;
       for (const [nm, t] of frames) {
-        last = newDataTable(p, { name: uniqueName(p, nm), columns: t.columns.map((c) => ({ name: c.name, type: c.type === 'numeric' ? 'auto' : 'text' })), rows: t.rows });
+        last = newDataTable(p, { name: uniqueName(p, nm), columns: t.columns.map((c) => ({ name: c.name, type: c.type === 'numeric' ? 'auto' : 'text' })), rows: t.rows, rowNames: t.row_names || [] });
       }
       this.added(last);
       toast(`Added ${frames.length} data table${frames.length > 1 ? 's' : ''} from ${file.name}.`);

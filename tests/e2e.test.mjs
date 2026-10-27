@@ -58,6 +58,25 @@ try {
   const info = await page.textContent('.data-info');
   check(info.includes('4 rows × 3 columns'), `typed + pasted data (${info.split('Control')[0].trim()})`);
   check(await page.textContent('.sheet td[data-r="3"][data-c="2"]') === '19', 'paste filled the third column');
+  // Row names: type one, and paste a block that starts in the row-names column.
+  await page.click('.sheet td[data-r="0"][data-c="-1"]');
+  await page.keyboard.type('Mouse A');
+  await page.keyboard.press('Enter');
+  await page.evaluate(() => {
+    const dt = new DataTransfer();
+    dt.setData('text/plain', 'Mouse B\t12\nMouse C\t11\n');
+    document.querySelector('.grid').dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true }));
+  });
+  await page.waitForTimeout(200);
+  const rn = await page.$$eval('.sheet td.rowname', (els) => els.slice(0, 3).map((e) => e.textContent));
+  check(rn.join('|') === 'Mouse A|Mouse B|Mouse C', `row names typed and pasted (${rn.join(', ')})`);
+  check(await page.textContent('.sheet td[data-r="1"][data-c="0"]') === '12', 'paste from the row-names column fills the next column too');
+  const dcode = await page.evaluate(async () => {
+    const { dataCode } = await import('./js/codegen/data.js');
+    return dataCode(window.agrafeuse.store.item());
+  });
+  check(dcode.includes('row_name = factor(c("Mouse A", "Mouse B", "Mouse C"'), 'row names become a row_name column in R');
+
   // Rename a column by typing on its header.
   await page.click('.sheet th[data-r="-1"][data-c="1"]');
   await page.keyboard.type('Drug X');
@@ -68,7 +87,8 @@ try {
   await page.click('button:has-text("Wide → long")');
   await settle();
   const resultHead = await page.textContent('.out-head');
-  check(/12 rows × 2 columns/.test(resultHead), `wide → long transform (${resultHead.trim()})`);
+  check(/12 rows × 3 columns/.test(resultHead) && (await page.textContent('table.results thead')).includes('row_name'),
+    `wide → long keeps the row names as an ID column (${resultHead.trim()})`);
 
   // --- new graph from the gallery --------------------------------------------------------
   await page.click('[data-k="new-graph"]');

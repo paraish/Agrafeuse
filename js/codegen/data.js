@@ -14,10 +14,11 @@ export function parseNumber(s) {
   return Number(t);
 }
 
-// Number of rows that hold any data (trailing empty rows are ignored).
+// Number of rows that hold any data or a row name (trailing empty rows are ignored).
 export function usedRowCount(table) {
-  for (let r = table.rows.length - 1; r >= 0; r--) {
-    if ((table.rows[r] || []).some((v) => !isMissing(v))) return r + 1;
+  const n = Math.max(table.rows.length, table.rowNames?.length || 0);
+  for (let r = n - 1; r >= 0; r--) {
+    if ((table.rows[r] || []).some((v) => !isMissing(v)) || !isMissing(table.rowNames?.[r])) return r + 1;
   }
   return 0;
 }
@@ -55,6 +56,14 @@ export function inferColumns(table) {
     const levels = type === 'factor' ? [...new Set(values.filter((v) => v !== null))] : [];
     out.push({ name: unique, index: j, type, values, levels, bad, missing: values.filter((v) => v === null).length });
   });
+  // Row names, if any were typed, become the first column ("row_name").
+  const names = [];
+  for (let r = 0; r < nrow; r++) names.push(isMissing(table.rowNames?.[r]) ? null : String(table.rowNames[r]).trim());
+  if (names.some((v) => v !== null)) {
+    let name = 'row_name';
+    for (let i = 2; seen.has(name); i++) name = `row_name_${i}`;
+    out.unshift({ name, index: -1, type: 'factor', values: names, levels: [...new Set(names.filter((v) => v !== null))], bad: 0, missing: names.filter((v) => v === null).length, rowNames: true });
+  }
   return { nrow, columns: out };
 }
 
@@ -127,8 +136,15 @@ export function parseDelimited(text, delim = detectDelimiter(text)) {
   return rows;
 }
 
-// A data table node from a header row + body rows of strings.
+// A data table node from a header row + body rows of strings. A first
+// column with no heading (as R's write.csv writes) holds row names.
 export function tableFromRows(header, body) {
+  let rowNames = [];
+  if (header.length > 1 && String(header[0] ?? '').trim() === '') {
+    rowNames = body.map((r) => r[0] ?? '');
+    header = header.slice(1);
+    body = body.map((r) => r.slice(1));
+  }
   const ncol = Math.max(header.length, ...body.map((r) => r.length), 0);
   const columns = [];
   for (let j = 0; j < ncol; j++) columns.push({ name: (header[j] ?? '').trim() || `V${j + 1}`, type: 'auto' });
@@ -137,5 +153,5 @@ export function tableFromRows(header, body) {
     for (let j = 0; j < ncol; j++) out.push(r[j] ?? '');
     return out;
   });
-  return { columns, rows };
+  return { columns, rows, rowNames };
 }

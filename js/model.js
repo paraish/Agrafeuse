@@ -58,12 +58,13 @@ export function addItem(project, item) {
   return item;
 }
 
-export function newDataTable(project, { name, columns, rows } = {}) {
+export function newDataTable(project, { name, columns, rows, rowNames } = {}) {
   const cols = columns || [{ name: 'Group A', type: 'auto' }, { name: 'Group B', type: 'auto' }, { name: 'Group C', type: 'auto' }];
   return addItem(project, {
     kind: 'data', name,
     columns: cols,
     rows: rows || [],
+    rowNames: rowNames || [],
   });
 }
 

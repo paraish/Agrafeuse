@@ -41,7 +41,7 @@ export class DataView {
       button('Graph it', () => this.graphIt(), { iconName: 'graph', kind: 'primary' }));
     fill(this.el, 
       itemHeader(this.app, it, 'Data table'),
-      h('div.hintbar', icon('info'), h('span', 'Type or paste (Ctrl+V) straight from Excel. Click a column title to rename it; the small menu sets its type. Each column is a group, or use one row per observation with group columns (long format).')),
+      h('div.hintbar', icon('info'), h('span', 'Type or paste (Ctrl+V) straight from Excel. The top row holds the column names (click one to rename it; the menu under it sets its type). Row names on the left are optional labels such as subject IDs. Each column can be a group, or use one row per observation with columns for the groups (long format).')),
       toolbar,
       h('div.grid-host', this.grid.el),
       this.info,
@@ -71,6 +71,7 @@ export class DataView {
     const t = tableFromRows(rows[0], rows.slice(1));
     this.item.columns = t.columns;
     this.item.rows = t.rows;
+    this.item.rowNames = t.rowNames;
     if (this.item.name.startsWith('Data ')) this.item.name = uniqueName(this.app.store.project, file.name.replace(/\.[^.]+$/, ''));
     this.app.renameItem(this.item);
     this.render();

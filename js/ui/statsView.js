@@ -20,7 +20,7 @@ export function autofillAnalysis(a, s) {
   a.y = nums.find((n) => !/^(id|subject)$/i.test(n)) || '';
   a.x = '';
   if (t.inputs.x) { a.x = nums[0] || ''; a.y = nums[1] || ''; }
-  a.subject = s.columns.find((c) => /subject|^id$|mouse|animal|patient|participant|donor|rat|individual/i.test(c.name))?.name || '';
+  a.subject = s.columns.find((c) => /subject|^id$|row_name|mouse|animal|patient|participant|donor|rat|individual/i.test(c.name))?.name || '';
   const groups = facs.filter((f) => f !== a.subject);
   a.group = groups[0] || '';
   a.factorB = groups[1] || '';

@@ -772,7 +772,10 @@ ag_table_json <- function(df, n = Inf) {
     levels = if (is.factor(df[[nm]])) I(levels(df[[nm]])) else I(character())))
   rows <- if (nrow(df)) do.call(mapply, c(list(FUN = function(...) I(c(...)), SIMPLIFY = FALSE, USE.NAMES = FALSE),
                                          lapply(df, ag_cell_text))) else list()
-  ag_json(list(columns = cols, rows = rows))
+  out <- list(columns = cols, rows = rows)
+  # Real row names (e.g. car models in mtcars), not just 1, 2, 3…
+  if (is.character(attr(df, "row.names"))) out$row_names <- I(rownames(df))
+  ag_json(out)
 }
 
 ag_preview <- function(df, n = 200) {

@@ -267,6 +267,15 @@ details.about p { margin: 8px 0 0; }
 .sheet .corner { z-index: 3; }
 .sheet .rowhead.sel { background: var(--accent-weak); color: var(--accent); }
 .sheet tr.spacer td { padding: 0; border: 0; height: auto; }
+/* row names: a label column pinned next to the row numbers */
+.sheet td.rowname { position: sticky; left: 46px; z-index: 1; background: var(--panel-2); font-weight: 500; border-right: 2px solid var(--border-strong); cursor: cell; }
+.sheet td.rowname.sel { background: color-mix(in srgb, var(--accent) 14%, var(--panel-2)); }
+.sheet th.rowname-head { position: sticky; left: 46px; z-index: 3; border-right: 2px solid var(--border-strong); }
+.sheet th.rowname-head .colname { font-style: italic; color: var(--muted); }
+.sheet .colsub { height: 22px; line-height: 22px; font-size: 11.5px; font-weight: 400; color: var(--faint); padding: 0 2px; }
+.sheet .corner { vertical-align: top; text-align: right; padding: 4px 6px; }
+.sheet .corner-label { font-size: 10.5px; font-weight: 500; color: var(--faint); text-transform: uppercase; letter-spacing: 0.04em; line-height: 22px; }
+.sheet .corner-label + .corner-label { margin-top: 1px; }
 .cell-editor { position: absolute; z-index: 5; border: 2px solid var(--accent); border-radius: 0; padding: 0 6px; background: var(--panel); box-shadow: var(--shadow-lg); height: 28px; }
 .data-info { display: flex; flex-wrap: wrap; gap: 6px 12px; color: var(--muted); font-size: 12.5px; padding: 8px 2px; }
 .colinfo b { color: var(--text); font-weight: 600; }

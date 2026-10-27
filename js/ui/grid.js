@@ -2,12 +2,15 @@
 // tables stay fast. Keyboard: arrows / Tab / Enter move, typing replaces the
 // cell, F2 or double-click edits it, Delete clears, Ctrl+C / Ctrl+V copy and
 // paste blocks (to and from Excel), Shift+arrows select a range.
+// Column names are the header row; row names are an optional first column
+// (index -1 here), e.g. subject IDs, which R gets as a "row_name" column.
 import { h, clear } from './dom.js';
 import { parseDelimited, isMissing, parseNumber } from '../codegen/data.js';
 
 const ROW_H = 28;
 const OVERSCAN = 10;
 const TYPE_OPTIONS = [['auto', 'Auto'], ['number', 'Number'], ['text', 'Text']];
+const RN = -1; // the row-names column
 
 export class Grid {
   constructor(table, { onChange, onSelect } = {}) {
@@ -54,10 +57,19 @@ export class Grid {
   get ncol() { return this.t.columns.length; }
   get nrowShown() { return Math.max(this.t.rows.length + 25, 40); }
   get(r, c) {
+    if (c === RN) return r < 0 ? 'Row names' : this.t.rowNames?.[r] ?? '';
     if (r < 0) return this.t.columns[c]?.name ?? '';
     return this.t.rows[r]?.[c] ?? '';
   }
   set(r, c, v) {
+    if (c === RN) {
+      if (r < 0) return; // the "Row names" heading is fixed
+      this.t.rowNames = this.t.rowNames || [];
+      while (this.t.rowNames.length < r) this.t.rowNames.push('');
+      this.t.rowNames[r] = v;
+      while (r >= this.t.rows.length) this.t.rows.push([]);
+      return;
+    }
     while (c >= this.ncol) this.t.columns.push({ name: `Column ${this.ncol + 1}`, type: 'auto' });
     if (r < 0) { this.t.columns[c].name = v; return; }
     while (r >= this.t.rows.length) this.t.rows.push([]);
@@ -103,10 +115,16 @@ export class Grid {
     const { r0, r1, c0, c1 } = this.rect();
     const ncolShown = this.ncol + 1;
 
-    const colgroup = h('colgroup', h('col', { style: { width: '46px' } }),
+    const colgroup = h('colgroup', h('col', { style: { width: '46px' } }), h('col', { style: { width: '132px' } }),
       Array.from({ length: ncolShown }, () => h('col', { style: { width: '128px' } })));
 
-    const headCells = [h('th.corner', { title: 'Select all', 'data-r': 'all' }, '')];
+    const headCells = [
+      h('th.corner', { title: 'Select all', 'data-r': 'all' }, h('div.corner-label', 'name'), h('div.corner-label', 'type')),
+      h('th.colhead.rowname-head', {
+        'data-r': -1, 'data-c': RN, class: r0 === -1 && c0 === RN ? 'sel' : '',
+        title: 'Optional labels for each row, e.g. subject or sample IDs. In R they become a "row_name" column.',
+      }, h('div.colname', 'Row names'), h('div.colsub', 'labels (optional)')),
+    ];
     for (let c = 0; c < ncolShown; c++) {
       const ghost = c === this.ncol;
       const selected = r0 === -1 && c >= c0 && c <= c1;
@@ -123,9 +141,16 @@ export class Grid {
       }, h('div.colname', ghost ? '+ new column' : (col.name || `Column ${c + 1}`)), typeSel));
     }
 
-    const body = [h('tr.spacer', h('td', { colspan: ncolShown + 1, style: { height: `${first * ROW_H}px` } }))];
+    const body = [h('tr.spacer', h('td', { colspan: ncolShown + 2, style: { height: `${first * ROW_H}px` } }))];
     for (let r = first; r < last; r++) {
-      const cells = [h('th.rowhead', { 'data-r': r, 'data-c': 'row', class: r >= r0 && r <= r1 && c0 === 0 && c1 >= this.ncol - 1 ? 'sel' : '' }, String(r + 1))];
+      const inRows = r >= r0 && r <= r1;
+      const cells = [
+        h('th.rowhead', { 'data-r': r, 'data-c': 'row', class: inRows && c0 <= RN && c1 >= this.ncol - 1 ? 'sel' : '' }, String(r + 1)),
+        h('td.rowname', {
+          'data-r': r, 'data-c': RN,
+          class: [inRows && c0 <= RN ? 'sel' : '', r === this.sel.r && this.sel.c === RN ? 'active' : ''].join(' '),
+        }, this.t.rowNames?.[r] ?? ''),
+      ];
       const row = this.t.rows[r];
       for (let c = 0; c < ncolShown; c++) {
         const v = row?.[c] ?? '';
@@ -141,7 +166,7 @@ export class Grid {
       }
       body.push(h('tr', cells));
     }
-    body.push(h('tr.spacer', h('td', { colspan: ncolShown + 1, style: { height: `${Math.max(0, this.nrowShown - last) * ROW_H}px` } })));
+    body.push(h('tr.spacer', h('td', { colspan: ncolShown + 2, style: { height: `${Math.max(0, this.nrowShown - last) * ROW_H}px` } })));
 
     clear(this.sheet);
     this.sheet.append(colgroup, h('thead', h('tr', headCells)), h('tbody', body));
@@ -163,7 +188,7 @@ export class Grid {
 
   select(r, c, extend = false) {
     r = Math.max(-1, Math.min(r, this.nrowShown - 1));
-    c = Math.max(0, Math.min(c, this.ncol));
+    c = Math.max(RN, Math.min(c, this.ncol));
     if (extend) { this.sel.r2 = r; this.sel.c2 = c; } else this.sel = { r, c, r2: r, c2: c };
     this.scrollIntoView(extend ? this.sel.r2 : r);
     this.render();
@@ -178,6 +203,7 @@ export class Grid {
   // ---- editing --------------------------------------------------------------------------------
   startEdit(initial = null) {
     const { r, c } = this.sel;
+    if (r < 0 && c === RN) return;
     this.editing = { r, c, quick: initial !== null };
     this.editor.value = initial !== null ? initial : this.get(r, c);
     this.editor.hidden = false;
@@ -203,7 +229,7 @@ export class Grid {
     this.editing = null;
     this.editor.hidden = true;
     if (value !== this.get(r, c)) {
-      const structural = r < 0 || c >= this.ncol;
+      const structural = r < 0 || c >= this.ncol || c === RN;
       this.set(r, c, value);
       this.changed(structural);
     } else this.render();
@@ -244,7 +270,7 @@ export class Grid {
     else if (k === 'Delete' || k === 'Backspace') { e.preventDefault(); this.clearSelection(); }
     else if (mod && (k === 'a' || k === 'A')) {
       e.preventDefault();
-      this.sel = { r: 0, c: 0, r2: Math.max(0, this.t.rows.length - 1), c2: Math.max(0, this.ncol - 1) };
+      this.sel = { r: 0, c: RN, r2: Math.max(0, this.t.rows.length - 1), c2: Math.max(0, this.ncol - 1) };
       this.render();
     } else if (!mod && !e.altKey && k.length === 1) {
       e.preventDefault();
@@ -268,13 +294,13 @@ export class Grid {
     e.preventDefault();
     this.el.focus({ preventScroll: true });
     if (t.r === 'all') {
-      this.sel = { r: 0, c: 0, r2: Math.max(0, this.t.rows.length - 1), c2: Math.max(0, this.ncol - 1) };
+      this.sel = { r: 0, c: RN, r2: Math.max(0, this.t.rows.length - 1), c2: Math.max(0, this.ncol - 1) };
       this.render();
       return;
     }
     if (t.c === 'row') {
       const keep = e.shiftKey ? this.sel.r : t.r;
-      this.sel = { r: keep, c: 0, r2: t.r, c2: Math.max(0, this.ncol - 1) };
+      this.sel = { r: keep, c: RN, r2: t.r, c2: Math.max(0, this.ncol - 1) };
       this.render();
       this.onSelect(this.rect());
       return;
@@ -361,6 +387,7 @@ export class Grid {
   insertRow() {
     const { r0 } = this.rect();
     this.t.rows.splice(Math.max(0, r0), 0, []);
+    if (this.t.rowNames?.length > r0) this.t.rowNames.splice(Math.max(0, r0), 0, '');
     this.changed(true);
   }
 
@@ -368,20 +395,22 @@ export class Grid {
     const { r0, r1 } = this.rect();
     if (r0 < 0) return;
     this.t.rows.splice(r0, r1 - r0 + 1);
+    this.t.rowNames?.splice(r0, r1 - r0 + 1);
     this.select(r0, this.sel.c);
     this.changed(true);
   }
 
   insertColumn() {
     const { c0 } = this.rect();
-    const at = Math.min(c0, this.ncol);
+    const at = Math.max(0, Math.min(c0, this.ncol));
     this.t.columns.splice(at, 0, { name: `Column ${this.ncol + 1}`, type: 'auto' });
     for (const row of this.t.rows) if (row.length > at) row.splice(at, 0, '');
     this.changed(true);
   }
 
   deleteColumns() {
-    const { c0, c1 } = this.rect();
+    const { c1 } = this.rect();
+    const c0 = Math.max(0, this.rect().c0); // the row-names column stays (clear it instead)
     const last = Math.min(c1, this.ncol - 1);
     if (c0 > last) return;
     this.t.columns.splice(c0, last - c0 + 1);
