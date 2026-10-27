@@ -121,7 +121,7 @@ ag_transpose <- function(df, names_col = NULL) {
 # ---- Theme --------------------------------------------------------------------
 
 # A clean "lab figure" look: no grid, thick black axes, bold titles.
-ag_theme_prism <- function(base_size = 14, base_family = "") {
+ag_theme_lab <- function(base_size = 14, base_family = "") {
   ggplot2::theme_classic(base_size = base_size, base_family = base_family) +
     ggplot2::theme(
       axis.line = ggplot2::element_line(linewidth = 0.9, colour = "black", lineend = "square"),

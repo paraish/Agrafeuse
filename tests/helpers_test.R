@@ -31,7 +31,7 @@ ok("eval_json error", cat(ag_eval_json("stop('boom')"), "\n"))
 ok("eval_json error call", cat(ag_eval_json("log(-1:'a')"), "\n"))
 p <- ggplot(d, aes(group, weight)) + geom_point(position = position_jitter(width = .15, height = 0, seed = 1)) +
   stat_summary(fun.data = ag_mean_sem, geom = "errorbar", width = .3) +
-  ag_brackets(r1, d, "group", "weight") + ag_theme_prism()
+  ag_brackets(r1, d, "group", "weight") + ag_theme_lab()
 ok("draw svg", { j <- jsonlite::fromJSON(ag_draw(p, tempfile(fileext = ".svg"), "svg", 4, 4, inline = TRUE)); stopifnot(j$ok); cat(nchar(j$svg), "chars, warnings:", length(j$warnings), "\n") })
 for (fmt in c("pdf", "png", "tiff")) ok(paste("draw", fmt), { f <- tempfile(); j <- jsonlite::fromJSON(ag_draw(p, f, fmt, 4, 4)); stopifnot(j$ok); cat(file.size(f), "bytes\n") })
 p2 <- ggplot(mtcars, aes(wt, mpg)) + geom_point() + ag_fit_curve(ag_result_lm(lm(mpg ~ wt, mtcars), mtcars, "wt", "mpg")) + ag_corner_label("r = 0.8")

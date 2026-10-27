@@ -363,7 +363,7 @@ export const TESTS = {
   anova2: {
     label: 'Two-way ANOVA', category: 'Two or more factors',
     short: 'Two factors, e.g. genotype × treatment.',
-    explain: 'For data grouped by two factors, e.g. genotype × treatment. It tests the effect of each factor and their interaction (whether the effect of one factor depends on the other).\n\nType III sums of squares (the default, as in Prism and SPSS) are appropriate when group sizes differ. Your data must be in a long table: one column for values and one for each factor.\n\nFor repeated measures, use the mixed-effects model.',
+    explain: 'For data grouped by two factors, e.g. genotype × treatment. It tests the effect of each factor and their interaction (whether the effect of one factor depends on the other).\n\nType III sums of squares (the default) are appropriate when group sizes differ. Your data must be in a long table: one column for values and one for each factor.\n\nFor repeated measures, use the mixed-effects model.',
     inputs: { layout: false, y: true, group: true, factorB: true },
     packages: ['emmeans'],
     options: [

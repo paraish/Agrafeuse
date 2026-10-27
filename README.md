@@ -2,7 +2,7 @@
 
 # Agrafeuse
 
-**Graphs and statistics with R and ggplot2, in your browser.** A free, open alternative to GraphPad Prism that gives you R's flexibility without writing code, and hands you the code when you want it.
+**Graphs and statistics with R and ggplot2, in your browser.** Point and click to build figures and run statistics, with the flexibility of R underneath: no code needed, and the code is there when you want it.
 
 - **No server, no install.** R runs inside the browser tab ([webR](https://docs.r-wasm.org/webr/latest/)). The app is a folder of static files you can host on GitHub Pages or open from your own computer.
 - **Your data stays on your computer.** Nothing is uploaded anywhere.
@@ -15,9 +15,9 @@
 
 | | |
 |---|---|
-| **Enter data** | Type straight into a spreadsheet, paste a block from Excel, import CSV/TSV, open an `.RData` file, or start from a built-in R dataset. Column tables (one column per group, like Prism), XY tables and long tables. |
+| **Enter data** | Type straight into a spreadsheet, paste a block from Excel, import CSV/TSV, open an `.RData` file, or start from a built-in R dataset. Column tables (one column per group), XY tables and long tables. |
 | **Transform** | Wide → long (melt / `pivot_longer`), long → wide, transpose, filter rows, reorder groups, rename, calculate a column with any R expression (log10, % of control, z-score…), change column types, keep/drop columns, summarise by group, sort, remove missing values. Steps chain together; the original table is never changed. |
-| **Graph** | A layered ggplot2 builder. Each layer picks a dataset and one of 23 geoms (points, jitter, dot plot, bars at the mean, error bars, box, violin, histogram, lines, fitted lines, heatmap tiles, text, reference lines…). Each aesthetic (colour, fill, symbol, size, opacity, line type) is either mapped to a column or set to a fixed value. Press **Add layer** to stack more. Templates for the usual figures and a box for any extra ggplot2 code. Under the graph, a formatting panel sets axis titles and tick labels (size, **bold**, *italic*, underline, angle), scales (linear, log, square root, reversed), ranges, tick spacing and number formats, the graph title, font, themes (including a Prism-like "lab figure" look), palettes or per-group colours, the legend and panels (facets). Drag the graph's edges to resize it, and drag along an axis to stretch or shrink its range (double-click the axis to reset it). Axis ranges zoom with `coord_cartesian()`, so points outside the range still count towards means, error bars and fits. |
+| **Graph** | A layered ggplot2 builder. Each layer picks a dataset and one of 23 geoms (points, jitter, dot plot, bars at the mean, error bars, box, violin, histogram, lines, fitted lines, heatmap tiles, text, reference lines…). Each aesthetic (colour, fill, symbol, size, opacity, line type) is either mapped to a column or set to a fixed value. Press **Add layer** to stack more. Templates for the usual figures and a box for any extra ggplot2 code. Under the graph, a formatting panel sets axis titles and tick labels (size, **bold**, *italic*, underline, angle), scales (linear, log, square root, reversed), ranges, tick spacing and number formats, the graph title, font, themes (including a clean "lab figure" look), palettes or per-group colours, the legend and panels (facets). Drag the graph's edges to resize it, and drag along an axis to stretch or shrink its range (double-click the axis to reset it). Axis ranges zoom with `coord_cartesian()`, so points outside the range still count towards means, error bars and fits. |
 | **Statistics** | t tests (unpaired / Welch, paired, ratio paired, one-sample), Mann-Whitney, Wilcoxon, one-way ANOVA with Tukey / Dunnett / Šidák / Bonferroni / Holm / FDR, Welch's ANOVA with Games-Howell, Kruskal-Wallis with Dunn's test, repeated-measures ANOVA, Friedman, two-way ANOVA (Type III or I) with simple-effects comparisons, mixed-effects models, correlation (Pearson, Spearman, Kendall), regression (linear, polynomial, log, exponential, power, 4-parameter dose-response with EC50, Michaelis-Menten, one-phase decay), descriptive statistics and normality tests. Each test has a plain-language explanation. |
 | **Stats on graphs** | P value brackets (stars or numbers, stacked automatically, including comparisons between side-by-side groups in two-way designs), result text in a corner, fitted curves with confidence bands. |
 | **Export** | PDF, SVG, PNG or TIFF at any size and resolution; the R script for the whole project; the project as `.RData`. |
@@ -65,7 +65,7 @@ summary(one_way_anova$model)                    # the fitted model itself
 
 Opening a plain `.RData` file made in R (no Agrafeuse project inside) adds each of its data frames as a data table.
 
-**Whole project as R code** (bottom of the left panel) gives one script that recreates everything, including the small `ag_…` helper functions Agrafeuse uses (Prism-like theme, p value brackets, result tables). It runs in R ≥ 4.1 with ggplot2 ≥ 3.5.
+**Whole project as R code** (bottom of the left panel) gives one script that recreates everything, including the small `ag_…` helper functions Agrafeuse uses (the lab-figure theme, p value brackets, result tables). It runs in R ≥ 4.1 with ggplot2 ≥ 3.5.
 
 ## How it works
 
@@ -189,7 +189,6 @@ attribution and the "How to cite" notice in the app's footer. See `NOTICE`.
 R, webR and the R packages Agrafeuse loads at run time have their own licenses (R is GPL-2 | GPL-3).
 
 For research use only, not for diagnostic procedures. Provided as is, without warranty.
-Agrafeuse is not affiliated with or endorsed by GraphPad Software. GraphPad Prism is a trademark of GraphPad Software, LLC.
 
 ---
 

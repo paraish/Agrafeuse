@@ -93,7 +93,7 @@ PALETTES.forEach(([pal], i) => newGraph(p, {
   name: `Palette ${pal}`,
   layers: [{ id: 'l1', geom: 'boxplot', dataset: tooth.id, aes: { x: map('dose'), y: map('length'), fill: map('supplement'), colour: i % 2 ? map('supplement') : undefined }, params: { dodge: true } }],
   palette: { name: pal, manual: { 'Orange juice': '#ffa500', 'Ascorbic acid': '#336699' } },
-  theme: { name: ['prism', 'classic', 'bw', 'minimal', 'light', 'gray', 'linedraw'][i % 7], base_size: 12, legend: ['right', 'top', 'bottom', 'none'][i % 4], x_angle: [0, 45, 90][i % 3] },
+  theme: { name: ['lab', 'classic', 'bw', 'minimal', 'light', 'gray', 'linedraw'][i % 7], base_size: 12, legend: ['right', 'top', 'bottom', 'none'][i % 4], x_angle: [0, 45, 90][i % 3] },
   labels: { title: 'T', subtitle: 'S', x: 'X', y: 'Y', legend: 'L', hide_legend_title: i % 2 === 0 },
   y_scale: { trans: ['identity', 'log10', 'log2', 'sqrt'][i % 4], min: i % 3 ? '' : '1', max: '', from_zero: i % 4 === 0 },
   facet: i % 3 === 0 ? { by: 'supplement', scales: 'free_y', ncol: 1 } : { by: '' },
@@ -129,7 +129,7 @@ newGraph(p, {
   x_scale: { trans: 'log10', format: 'pow10' },
   y_scale: { trans: 'identity', from_zero: true, step: 0.25, format: 'pct100' },
   style: { y_title: { underline: true, bold: true }, x_title: { bold: false }, title: { align: 'right' } },
-  theme: { name: 'prism', base_size: 14, x_angle: 90 },
+  theme: { name: 'lab', base_size: 14, x_angle: 90 },
 });
 
 // Schemas: data tables from JS, transforms unknown (null) like before R runs.

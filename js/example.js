@@ -1,5 +1,5 @@
 // The example project: one dataset (R's classic PlantGrowth data) entered as a
-// Prism-style column table, reshaped to long format, analysed with a one-way
+// column table (one column per group), reshaped to long format, analysed with a one-way
 // ANOVA, and graphed with the ANOVA's p values on top.
 import { emptyProject, newDataTable, newTransform, newAnalysis, newGraph } from './model.js';
 
@@ -28,7 +28,7 @@ export function exampleProject() {
       { id: 'l3', geom: 'errorbar', dataset: plantLong.id, aes: { x: map('group'), y: map('weight'), linewidth: fixed(0.8) }, params: { error: 'sem', width: 0.25 } },
     ],
     labels: { title: '', x: '', y: 'Dried weight (g)', legend: '', hide_x: true },
-    theme: { name: 'prism', base_size: 14, legend: 'none' },
+    theme: { name: 'lab', base_size: 14, legend: 'none' },
     palette: { name: 'okabe', manual: {} },
     size: { width: 4, height: 4, dpi: 300 },
     annotations: [{ id: 'a1', kind: 'brackets', analysis: anova.id, format: 'stars', hide_ns: false }],

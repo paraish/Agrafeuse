@@ -8,7 +8,7 @@ const cols = (names) => (names.length === 1 ? rsym(names[0]) : rvec(names.map(rs
 export const STEP_TYPES = {
   pivot_longer: {
     label: 'Wide → long (melt / pivot longer)',
-    help: 'Stack several columns into two: one naming the column a value came from, one holding the value. Use this to turn a Prism-style table (one column per group) into the long format ggplot2 and most tests need.',
+    help: 'Stack several columns into two: one naming the column a value came from, one holding the value. Use this to turn a table with one column per group into the long format ggplot2 and most tests need.',
     defaults: (schema) => ({
       cols: (schema?.columns || []).filter((c) => c.type === 'numeric').map((c) => c.name),
       names_to: 'group', values_to: 'value', drop_na: true,

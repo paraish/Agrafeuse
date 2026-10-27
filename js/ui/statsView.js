@@ -110,7 +110,7 @@ export class StatsView {
     const out = [];
     if (t.inputs.layout) {
       out.push(field('How is the data laid out?', segmented([
-        ['columns', 'One column per group', 'Like a Prism column table: each column is a group'],
+        ['columns', 'One column per group', 'Each column is a group'],
         ['long', 'Values + group columns', 'One row per value, with a column naming its group'],
       ], a.layout, (v) => { a.layout = v; this.changed(true); }, { k: 'layout' })));
     }

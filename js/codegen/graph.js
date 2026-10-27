@@ -265,8 +265,13 @@ export const NUMBER_FORMATS = {
 
 export const FONTS = [['', 'Sans serif'], ['serif', 'Serif'], ['mono', 'Monospace']];
 
+// The lab-figure theme (also used for any unknown theme name) has bold titles.
+export function boldTitles(name) {
+  return !name || name === 'lab' || !THEMES.some((t) => t[0] === name);
+}
+
 export const THEMES = [
-  ['prism', 'Lab figure (bold, no grid)', 'ag_theme_prism'],
+  ['lab', 'Lab figure (bold, no grid)', 'ag_theme_lab'],
   ['classic', 'Classic', 'theme_classic'],
   ['bw', 'Black & white grid', 'theme_bw'],
   ['minimal', 'Minimal', 'theme_minimal'],
@@ -458,7 +463,7 @@ export function graphCode(g, ctx) {
   const L = g.labels || {};
   const T = g.theme || {};
   const ST = g.style || {};
-  const titlesBold = (T.name || 'prism') === 'prism';
+  const titlesBold = boldTitles(T.name);
   const label = (text, st) => {
     if (!st?.underline) return rstr(text);
     let e = rstr(text);

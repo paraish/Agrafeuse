@@ -94,7 +94,7 @@ export class App {
         AI_CREDIT),
       h('p.legal', 'For research use only, not for diagnostic procedures. Provided as is, without warranty. ',
         'Statistics are computed by R; please also cite R and the R packages your analysis used (listed in its R code). ',
-        'Not affiliated with or endorsed by GraphPad Software. Free software under the ', link(ABOUT.license, 'GNU AGPL v3'), '; ',
+        'Free software under the ', link(ABOUT.license, 'GNU AGPL v3'), '; ',
         link(ABOUT.url, 'source code'), '. Your data stays on your computer.'));
   }
 
@@ -257,7 +257,7 @@ export class App {
     const choice = await modal({
       title: 'New data table',
       body: (close) => h('div.choices',
-        card('column', 'Column table', 'One column per group, like Prism. For t tests and one-way ANOVA.', close),
+        card('column', 'Column table', 'One column per group. For t tests and one-way ANOVA.', close),
         card('xy', 'XY table', 'An X column and a Y column. For correlation, regression and curves.', close),
         card('long', 'Long table', 'One row per measurement, with a column for each factor. For two-way ANOVA and mixed models.', close),
         card('import', 'Import a file', 'CSV or TSV (save Excel sheets as CSV, or just paste into a table).', close),

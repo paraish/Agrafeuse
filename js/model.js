@@ -92,7 +92,7 @@ export function newGraph(project, extra = {}) {
     kind: 'graph',
     layers: [],
     labels: { title: '', x: '', y: '', legend: '' },
-    theme: { name: 'prism', base_size: 14, legend: 'right', x_angle: 0 },
+    theme: { name: 'lab', base_size: 14, legend: 'right', x_angle: 0 },
     palette: { name: 'default', manual: {} },
     x_scale: { trans: 'identity', min: '', max: '', from_zero: false },
     y_scale: { trans: 'identity', min: '', max: '', from_zero: false },

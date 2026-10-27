@@ -41,7 +41,7 @@ export function addFixtures(p) {
       { id: 'l3', geom: 'jitter', dataset: tooth.id, aes: { x: map('dose'), y: map('length'), fill: map('supplement'), shape: fixed(21), size: fixed(1.8) }, params: { width: 0.12, dodge: true } },
     ],
     labels: { title: '', x: 'Vitamin C dose (mg/day)', y: 'Tooth length (mm)', legend: 'Supplement' },
-    theme: { name: 'prism', base_size: 14, legend: 'top', },
+    theme: { name: 'lab', base_size: 14, legend: 'top', },
     palette: { name: 'manual', manual: { 'Ascorbic acid': '#d9d9d9', 'Orange juice': '#f4a261' } },
     y_scale: { trans: 'identity', min: '', max: '', from_zero: true },
     size: { width: 5, height: 4.5, dpi: 300 },
@@ -61,7 +61,7 @@ export function addFixtures(p) {
       { id: 'l1', geom: 'point', dataset: dnase.id, aes: { x: map('concentration'), y: map('density'), shape: fixed(21), fill: fixed('#ffffff'), size: fixed(2.5) }, params: {} },
     ],
     labels: { title: '', x: 'DNase concentration (ng/ml)', y: 'Optical density' },
-    theme: { name: 'prism', base_size: 14, legend: 'right', },
+    theme: { name: 'lab', base_size: 14, legend: 'right', },
     x_scale: { trans: 'log10', min: '', max: '', from_zero: false },
     size: { width: 5, height: 4, dpi: 300 },
     annotations: [

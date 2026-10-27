@@ -6,7 +6,7 @@ import {
   columnOptions, levelsOf, section, codeBlock, messageBox, input, toast,
 } from './widgets.js';
 import { itemHeader, warningsBox } from './common.js';
-import { GEOMS, GEOM_CATEGORIES, AES, SHAPES, LINETYPES, THEMES, PALETTES, NUMBER_FORMATS, FONTS, geomDefaults } from '../codegen/graph.js';
+import { GEOMS, GEOM_CATEGORIES, AES, SHAPES, LINETYPES, THEMES, PALETTES, NUMBER_FORMATS, FONTS, geomDefaults, boldTitles } from '../codegen/graph.js';
 import { TESTS } from '../codegen/stats.js';
 import { datasets, itemsOf, getItem, depsOf, clone } from '../model.js';
 
@@ -282,7 +282,7 @@ export class GraphView {
     const g = this.item;
     g.labels = g.labels || {};
     g.style = g.style || {};
-    g.theme = g.theme || { name: 'prism', base_size: 14 };
+    g.theme = g.theme || { name: 'lab', base_size: 14 };
     // Older projects kept the X label angle on the theme.
     if (g.theme.x_angle !== undefined) {
       g.style.x_text = { ...(g.style.x_text || {}), angle: g.style.x_text?.angle ?? g.theme.x_angle };
@@ -307,7 +307,7 @@ export class GraphView {
 
   // Bold / italic / underline buttons. `bold: null` means "as the theme does".
   faceToggles(st, keys, k) {
-    const themeBold = (this.item.theme?.name || 'prism') === 'prism';
+    const themeBold = boldTitles(this.item.theme?.name);
     const defs = { bold: ['B', 'Bold', themeBold && /title/.test(k)], italic: ['I', 'Italic', false], underline: ['U', 'Underline', false] };
     return h('span.toggles', keys.map((key) => {
       const on = st[key] ?? defs[key][2];
