@@ -2,6 +2,7 @@
 import { rsym, rstr, rnum, rvec, rbool } from '../rcode.js';
 
 // Aesthetics. kind decides the "fixed value" editor; mapOnly ones can only be columns.
+// A graph can map some of them plot-wide (g.base.aes), for every layer to inherit.
 export const AES = {
   x: { label: 'X', mapOnly: true },
   y: { label: 'Y', mapOnly: true },
@@ -12,7 +13,7 @@ export const AES = {
   alpha: { label: 'Opacity', kind: 'number', min: 0, max: 1, step: 0.05, def: 0.7 },
   linetype: { label: 'Line type', kind: 'linetype', discrete: true },
   linewidth: { label: 'Line width', kind: 'number', min: 0, max: 10, step: 0.1, def: 0.8 },
-  group: { label: 'Group (connect)', mapOnly: true },
+  group: { label: 'Group', mapOnly: true, title: 'Separate lines, fits, boxes and side-by-side positions by a column, without colouring them' },
   label: { label: 'Label text', mapOnly: true },
   ymin: { label: 'Y min', mapOnly: true },
   ymax: { label: 'Y max', mapOnly: true },
@@ -53,13 +54,13 @@ const errorParams = [
 export const GEOMS = {
   point: {
     label: 'Points', category: 'Points',
-    aes: ['x', 'y', 'colour', 'fill', 'shape', 'size', 'alpha'], required: ['x', 'y'],
+    aes: ['x', 'y', 'colour', 'fill', 'shape', 'size', 'alpha', 'group'], required: ['x', 'y'],
     params: [dodgeParam],
     build: (p) => ({ fn: 'geom_point', args: p.dodge ? [`position = ${DODGE}`] : [] }),
   },
   jitter: {
     label: 'Points, jittered (scatter dot plot)', category: 'Points',
-    aes: ['x', 'y', 'colour', 'fill', 'shape', 'size', 'alpha'], required: ['x', 'y'],
+    aes: ['x', 'y', 'colour', 'fill', 'shape', 'size', 'alpha', 'group'], required: ['x', 'y'],
     params: [{ key: 'width', label: 'Jitter width', type: 'number', def: 0.15, min: 0, max: 1, step: 0.05 }, dodgeParam],
     build: (p) => ({
       fn: 'geom_point',
@@ -70,7 +71,7 @@ export const GEOMS = {
   },
   dotplot: {
     label: 'Dot plot (stacked dots)', category: 'Points',
-    aes: ['x', 'y', 'colour', 'fill', 'alpha'], required: ['x', 'y'],
+    aes: ['x', 'y', 'colour', 'fill', 'alpha', 'group'], required: ['x', 'y'],
     params: [{ key: 'dotsize', label: 'Dot size', type: 'number', def: 1, min: 0.1, max: 5, step: 0.1 },
       { key: 'binwidth', label: 'Bin width (blank = automatic)', type: 'text', def: '' }, dodgeParam],
     build: (p) => ({
@@ -82,7 +83,7 @@ export const GEOMS = {
   },
   mean_bar: {
     label: 'Bar at the mean (or median)', category: 'Summaries',
-    aes: ['x', 'y', 'colour', 'fill', 'alpha', 'linewidth'], required: ['x', 'y'],
+    aes: ['x', 'y', 'colour', 'fill', 'alpha', 'linewidth', 'group'], required: ['x', 'y'],
     params: [{ key: 'fun', label: 'Bar height', type: 'select', options: [['mean', 'Mean'], ['median', 'Median']], def: 'mean' },
       { key: 'width', label: 'Bar width', type: 'number', def: 0.6, min: 0.05, max: 1, step: 0.05 }, dodgeParam],
     build: (p) => ({
@@ -92,7 +93,7 @@ export const GEOMS = {
   },
   mean_line: {
     label: 'Line at the mean (or median)', category: 'Summaries',
-    aes: ['x', 'y', 'colour', 'linewidth', 'alpha'], required: ['x', 'y'],
+    aes: ['x', 'y', 'colour', 'linewidth', 'alpha', 'group'], required: ['x', 'y'],
     params: [{ key: 'fun', label: 'Line at', type: 'select', options: [['mean', 'Mean'], ['median', 'Median']], def: 'mean' },
       { key: 'width', label: 'Line length', type: 'number', def: 0.5, min: 0.05, max: 1, step: 0.05 }, dodgeParam],
     build: (p) => {
@@ -102,19 +103,19 @@ export const GEOMS = {
   },
   errorbar: {
     label: 'Error bars (SEM, SD, 95% CI…)', category: 'Summaries',
-    aes: ['x', 'y', 'colour', 'linewidth', 'alpha'], required: ['x', 'y'],
+    aes: ['x', 'y', 'colour', 'linewidth', 'alpha', 'group'], required: ['x', 'y'],
     params: [...errorParams, { key: 'width', label: 'Cap width', type: 'number', def: 0.3, min: 0, max: 1, step: 0.05 }, dodgeParam],
     build: (p) => ({ fn: 'stat_summary', args: [...errorArgs(p), 'geom = "errorbar"', `width = ${rnum(p.width)}`, ...(p.dodge ? [`position = ${DODGE}`] : [])] }),
   },
   pointrange: {
     label: 'Mean point with error line', category: 'Summaries',
-    aes: ['x', 'y', 'colour', 'shape', 'size', 'linewidth', 'alpha'], required: ['x', 'y'],
+    aes: ['x', 'y', 'colour', 'shape', 'size', 'linewidth', 'alpha', 'group'], required: ['x', 'y'],
     params: [...errorParams, dodgeParam],
     build: (p) => ({ fn: 'stat_summary', args: [...errorArgs(p), 'geom = "pointrange"', ...(p.dodge ? [`position = ${DODGE}`] : [])] }),
   },
   mean_point: {
     label: 'Point at the mean', category: 'Summaries',
-    aes: ['x', 'y', 'colour', 'fill', 'shape', 'size', 'alpha'], required: ['x', 'y'],
+    aes: ['x', 'y', 'colour', 'fill', 'shape', 'size', 'alpha', 'group'], required: ['x', 'y'],
     params: [{ key: 'fun', label: 'Point at', type: 'select', options: [['mean', 'Mean'], ['median', 'Median']], def: 'mean' }, dodgeParam],
     build: (p) => ({ fn: 'stat_summary', args: [`fun = ${p.fun || 'mean'}`, 'geom = "point"', ...(p.dodge ? [`position = ${DODGE}`] : [])] }),
   },
@@ -131,7 +132,7 @@ export const GEOMS = {
   },
   boxplot: {
     label: 'Box and whiskers', category: 'Distributions',
-    aes: ['x', 'y', 'colour', 'fill', 'alpha', 'linewidth'], required: ['x', 'y'],
+    aes: ['x', 'y', 'colour', 'fill', 'alpha', 'linewidth', 'group'], required: ['x', 'y'],
     params: [{ key: 'width', label: 'Box width', type: 'number', def: 0.6, min: 0.05, max: 1, step: 0.05 },
       { key: 'outliers', label: 'Show outlier points', type: 'bool', def: true },
       { key: 'staplewidth', label: 'Whisker cap width', type: 'number', def: 0, min: 0, max: 1, step: 0.1 }, dodgeParam],
@@ -144,7 +145,7 @@ export const GEOMS = {
   },
   violin: {
     label: 'Violin', category: 'Distributions',
-    aes: ['x', 'y', 'colour', 'fill', 'alpha', 'linewidth'], required: ['x', 'y'],
+    aes: ['x', 'y', 'colour', 'fill', 'alpha', 'linewidth', 'group'], required: ['x', 'y'],
     params: [{ key: 'width', label: 'Width', type: 'number', def: 0.8, min: 0.05, max: 1.5, step: 0.05 },
       { key: 'trim', label: 'Trim tails at the data range', type: 'bool', def: true },
       { key: 'scale', label: 'Scale', type: 'select', options: [['area', 'Same area'], ['width', 'Same width'], ['count', 'Area ∝ n']], def: 'area' }, dodgeParam],
@@ -155,32 +156,32 @@ export const GEOMS = {
   },
   histogram: {
     label: 'Histogram', category: 'Distributions',
-    aes: ['x', 'colour', 'fill', 'alpha'], required: ['x'],
+    aes: ['x', 'colour', 'fill', 'alpha', 'group'], required: ['x'],
     params: [{ key: 'bins', label: 'Number of bins', type: 'number', def: 20, min: 2, max: 200, step: 1 },
       { key: 'position', label: 'Groups', type: 'select', options: [['stack', 'Stacked'], ['identity', 'Overlapping'], ['dodge', 'Side by side']], def: 'stack' }],
     build: (p) => ({ fn: 'geom_histogram', args: [`bins = ${rnum(p.bins)}`, ...(p.position && p.position !== 'stack' ? [`position = ${rstr(p.position)}`] : [])] }),
   },
   density: {
     label: 'Density curve', category: 'Distributions',
-    aes: ['x', 'colour', 'fill', 'alpha', 'linewidth', 'linetype'], required: ['x'],
+    aes: ['x', 'colour', 'fill', 'alpha', 'linewidth', 'linetype', 'group'], required: ['x'],
     params: [{ key: 'adjust', label: 'Smoothness (bandwidth ×)', type: 'number', def: 1, min: 0.1, max: 5, step: 0.1 }],
     build: (p) => ({ fn: 'geom_density', args: Number(p.adjust) !== 1 ? [`adjust = ${rnum(p.adjust)}`] : [] }),
   },
   col: {
     label: 'Bars (heights from a column)', category: 'Bars',
-    aes: ['x', 'y', 'colour', 'fill', 'alpha', 'linewidth'], required: ['x', 'y'],
+    aes: ['x', 'y', 'colour', 'fill', 'alpha', 'linewidth', 'group'], required: ['x', 'y'],
     params: [{ key: 'width', label: 'Bar width', type: 'number', def: 0.7, min: 0.05, max: 1, step: 0.05 }, dodgeParam],
     build: (p) => ({ fn: 'geom_col', args: [`width = ${rnum(p.width)}`, ...(p.dodge ? [`position = ${DODGE}`] : [])] }),
   },
   bar_count: {
     label: 'Bars (count rows)', category: 'Bars',
-    aes: ['x', 'colour', 'fill', 'alpha'], required: ['x'],
+    aes: ['x', 'colour', 'fill', 'alpha', 'group'], required: ['x'],
     params: [{ key: 'width', label: 'Bar width', type: 'number', def: 0.7, min: 0.05, max: 1, step: 0.05 }, dodgeParam],
     build: (p) => ({ fn: 'geom_bar', args: [`width = ${rnum(p.width)}`, ...(p.dodge ? [`position = ${DODGE}`] : [])] }),
   },
   errorbar_cols: {
     label: 'Error bars (from min / max columns)', category: 'Bars',
-    aes: ['x', 'ymin', 'ymax', 'colour', 'linewidth'], required: ['x', 'ymin', 'ymax'],
+    aes: ['x', 'ymin', 'ymax', 'colour', 'linewidth', 'group'], required: ['x', 'ymin', 'ymax'],
     params: [{ key: 'width', label: 'Cap width', type: 'number', def: 0.3, min: 0, max: 1, step: 0.05 }, dodgeParam],
     build: (p) => ({ fn: 'geom_errorbar', args: [`width = ${rnum(p.width)}`, ...(p.dodge ? [`position = ${DODGE}`] : [])] }),
   },
@@ -196,13 +197,13 @@ export const GEOMS = {
   },
   area: {
     label: 'Area under a line', category: 'Lines',
-    aes: ['x', 'y', 'colour', 'fill', 'alpha'], required: ['x', 'y'],
+    aes: ['x', 'y', 'colour', 'fill', 'alpha', 'group'], required: ['x', 'y'],
     params: [],
     build: () => ({ fn: 'geom_area', args: [] }),
   },
   smooth: {
     label: 'Fitted line / smoother', category: 'Lines',
-    aes: ['x', 'y', 'colour', 'fill', 'linetype', 'linewidth'], required: ['x', 'y'],
+    aes: ['x', 'y', 'colour', 'fill', 'linetype', 'linewidth', 'group'], required: ['x', 'y'],
     params: [{ key: 'method', label: 'Fit', type: 'select', options: [['lm', 'Straight line'], ['poly2', 'Quadratic'], ['poly3', 'Cubic'], ['loess', 'LOESS smoother']], def: 'lm' },
       { key: 'se', label: 'Show 95% confidence band', type: 'bool', def: true }],
     build: (p) => {
@@ -213,13 +214,13 @@ export const GEOMS = {
   },
   text: {
     label: 'Text labels', category: 'Other',
-    aes: ['x', 'y', 'label', 'colour', 'size'], required: ['x', 'y', 'label'],
+    aes: ['x', 'y', 'label', 'colour', 'size', 'group'], required: ['x', 'y', 'label'],
     params: [{ key: 'nudge_y', label: 'Move up by', type: 'number', def: 0, step: 0.1 }],
     build: (p) => ({ fn: 'geom_text', args: Number(p.nudge_y) ? [`nudge_y = ${rnum(p.nudge_y)}`] : [] }),
   },
   tile: {
     label: 'Heatmap tiles', category: 'Other',
-    aes: ['x', 'y', 'fill', 'colour', 'alpha'], required: ['x', 'y', 'fill'],
+    aes: ['x', 'y', 'fill', 'colour', 'alpha', 'group'], required: ['x', 'y', 'fill'],
     params: [],
     build: () => ({ fn: 'geom_tile', args: [] }),
   },
@@ -293,6 +294,65 @@ export const PALETTES = [
   ['manual', 'Pick colours per group'],
 ];
 
+// Aesthetics that can be mapped for the whole plot.
+export const PLOT_AES = ['x', 'y', 'colour', 'fill', 'shape', 'linetype', 'size', 'alpha', 'group'];
+
+const isMapped = (m) => m?.mode === 'col' && !!m.col;
+
+// The plot-wide data and mappings, which layers inherit. Graphs made before
+// these existed share whatever all their visible layers have in common.
+export function plotBase(g) {
+  if (g.base) return { dataset: g.base.dataset || '', aes: g.base.aes || {} };
+  const dataLayers = (g.layers || []).filter((l) => !l.hidden && GEOMS[l.geom] && !GEOMS[l.geom].noData);
+  const ds = [...new Set(dataLayers.map((l) => l.dataset))];
+  const aes = {};
+  if (ds.length === 1 && dataLayers.length) {
+    for (const [k, m] of Object.entries(dataLayers[0].aes || {})) {
+      if (isMapped(m) && dataLayers.every((l) => sameMapping(l.aes?.[k], m))) aes[k] = m;
+    }
+  }
+  return { dataset: ds.length === 1 ? ds[0] : '', aes };
+}
+
+// Give a graph made before plot-wide settings its own: what all layers share
+// moves up, and the layers inherit it. The plot it draws stays the same.
+export function ensureBase(g) {
+  if (g.base) return g;
+  const base = plotBase(g);
+  g.base = { dataset: base.dataset, aes: JSON.parse(JSON.stringify(base.aes)) };
+  for (const l of g.layers || []) {
+    const geom = GEOMS[l.geom];
+    if (!geom || geom.noData) continue;
+    l.aes = l.aes || {};
+    if (base.dataset && l.dataset === base.dataset) l.dataset = '';
+    for (const [k, m] of Object.entries(base.aes)) {
+      if (sameMapping(l.aes[k], m)) delete l.aes[k];
+      else if (!l.aes[k] && geom.aes.includes(k)) l.aes[k] = { mode: 'none' }; // (a hidden layer without it)
+    }
+  }
+  return g;
+}
+
+// A layer as drawn: its own settings, else the plot's data and mappings.
+// mode 'none' turns a plot-wide mapping off for one layer.
+export function effectiveLayer(l, base) {
+  const geom = GEOMS[l.geom];
+  if (!geom || geom.noData) return l;
+  const aes = {};
+  for (const k of geom.aes) {
+    const own = l.aes?.[k];
+    if (own?.mode === 'none') continue;
+    if (own?.mode === 'col' || own?.mode === 'const') aes[k] = own;
+    else if (isMapped(base.aes?.[k])) aes[k] = base.aes[k];
+  }
+  return { ...l, dataset: l.dataset || base.dataset, aes };
+}
+
+export function effectiveLayers(g) {
+  const base = plotBase(g);
+  return (g.layers || []).map((l) => effectiveLayer(l, base));
+}
+
 // ---- code generation ------------------------------------------------------------------
 
 function mappingExpr(m, aesKey) {
@@ -312,23 +372,14 @@ function sameMapping(a, b) {
 
 // ctx: { rnameOf(id), schemaOf(id), analyses: {id: node} }
 export function graphCode(g, ctx) {
-  const layers = (g.layers || []).filter((l) => !l.hidden && GEOMS[l.geom]);
+  const base = plotBase(g);
+  const raw = (g.layers || []).filter((l) => !l.hidden && GEOMS[l.geom]);
+  const layers = raw.map((l) => effectiveLayer(l, base));
   const dataLayers = layers.filter((l) => !GEOMS[l.geom].noData);
   for (const l of dataLayers) {
-    if (!l.dataset) throw new Error(`Layer "${GEOMS[l.geom].label}" has no dataset.`);
+    if (!l.dataset) throw new Error(`Layer "${GEOMS[l.geom].label}" has no dataset: choose one for the layer or for the whole plot.`);
     for (const a of GEOMS[l.geom].required) {
       if (l.aes?.[a]?.mode !== 'col' || !l.aes[a].col) throw new Error(`Layer "${GEOMS[l.geom].label}" needs a column for ${AES[a].label}.`);
-    }
-  }
-
-  // Decide what can be shared in ggplot(): one dataset, identical mappings.
-  const datasets = [...new Set(dataLayers.map((l) => l.dataset))];
-  const shareData = datasets.length === 1;
-  const sharedAes = {};
-  if (shareData && dataLayers.length) {
-    const first = dataLayers[0];
-    for (const [k, m] of Object.entries(first.aes || {})) {
-      if (m && m.mode === 'col' && m.col && dataLayers.every((l) => sameMapping(l.aes?.[k], m))) sharedAes[k] = m;
     }
   }
 
@@ -339,41 +390,54 @@ export function graphCode(g, ctx) {
   const xDiscrete = main ? !isNumericMap(main, main.aes.x) : true;
   const yLayer = dataLayers.find((l) => l.aes?.y?.mode === 'col');
 
+  // ggplot(): the plot's data and the mappings every layer inherits.
   const aesStr = (entries) => (entries.length ? `aes(${entries.join(', ')})` : '');
-  const sharedEntries = Object.entries(sharedAes).map(([k, m]) => `${k} = ${mappingExpr({ ...m, numeric: isNumericMap(dataLayers[0], m) }, k)}`);
-  const head = shareData && dataLayers.length
-    ? `ggplot(${[ctx.rnameOf(datasets[0]), aesStr(sharedEntries)].filter(Boolean).join(', ')})`
-    : 'ggplot()';
+  const baseMaps = Object.entries(base.aes).filter(([k, m]) => AES[k] && isMapped(m));
+  const baseData = base.dataset || dataLayers[0]?.dataset;
+  const baseEntries = baseMaps.map(([k, m]) => `${k} = ${mappingExpr({ ...m, numeric: isNumericMap({ dataset: baseData }, m) }, k)}`);
+  const headArgs = [];
+  if (base.dataset) headArgs.push(ctx.rnameOf(base.dataset));
+  if (baseEntries.length) headArgs.push(base.dataset ? aesStr(baseEntries) : `mapping = ${aesStr(baseEntries)}`);
+  const head = `ggplot(${headArgs.join(', ')})`;
 
   const parts = [];
-  for (const l of layers) {
+  raw.forEach((l, li) => {
     const geom = GEOMS[l.geom];
     if (geom.custom) {
       const code = (l.code || '').trim();
       if (code) parts.push(code);
-      continue;
+      return;
     }
     const params = { ...geomDefaults(l.geom), ...(l.params || {}) };
-    const built = geom.build(params, { ...l, xDiscrete });
-    const mapEntries = [];
+    const built = geom.build(params, { ...layers[li], xDiscrete });
+    const maps = new Map();
     const consts = [];
+    // A plot-wide X or Y the geom has no use for (e.g. Y for a histogram, which
+    // counts) would get in its way: then the layer inherits nothing and lists
+    // the mappings it uses itself.
+    const standalone = !geom.noData && ['x', 'y'].some((k) => isMapped(base.aes[k]) && !geom.aes.includes(k));
     for (const k of geom.aes) {
       const m = l.aes?.[k];
-      if (!m || m.mode === 'none' || !m.mode) continue;
-      if (m.mode === 'col' && m.col) {
-        if (!geom.noData && sharedAes[k] && sameMapping(sharedAes[k], m)) continue;
-        mapEntries.push(`${k} = ${mappingExpr({ ...m, numeric: isNumericMap(l, m) }, k)}`);
-      } else if (m.mode === 'const' && m.value !== '' && m.value !== undefined && !AES[k].mapOnly) {
+      const inherited = !geom.noData && !standalone && isMapped(base.aes[k]) ? base.aes[k] : null;
+      const eff = layers[li].aes?.[k];
+      if (m?.mode === 'col' && m.col) {
+        if (!sameMapping(inherited, m)) maps.set(k, mappingExpr({ ...m, numeric: isNumericMap(layers[li], m) }, k));
+      } else if (m?.mode === 'const' && m.value !== '' && m.value !== undefined && !AES[k].mapOnly) {
         consts.push(`${k} = ${constExpr(k, m.value)}`);
+      } else if (m?.mode === 'none' && inherited) {
+        maps.set(k, 'NULL');
+      } else if (standalone && isMapped(eff)) {
+        maps.set(k, mappingExpr({ ...eff, numeric: isNumericMap(layers[li], eff) }, k));
       }
     }
-    for (const [k, v] of Object.entries(built.extraAes || {})) mapEntries.push(`${k} = ${v}`);
+    for (const [k, v] of Object.entries(built.extraAes || {})) maps.set(k, v);
     const a = [];
-    if (!geom.noData && !shareData) a.push(`data = ${ctx.rnameOf(l.dataset)}`);
-    if (mapEntries.length) a.push(aesStr(mapEntries));
+    if (!geom.noData && l.dataset && l.dataset !== base.dataset) a.push(`data = ${ctx.rnameOf(l.dataset)}`);
+    if (maps.size) a.push(aesStr([...maps].map(([k, v]) => `${k} = ${v}`)));
     a.push(...built.args, ...consts);
+    if (standalone) a.push('inherit.aes = FALSE');
     parts.push(`${built.fn}(${a.join(', ')})`);
-  }
+  });
 
   // Statistics drawn from analyses.
   for (const ann of g.annotations || []) {
@@ -534,7 +598,11 @@ export function graphCode(g, ctx) {
 
 export function graphDeps(g) {
   const ids = new Set();
-  for (const l of g.layers || []) if (!l.hidden && l.dataset && GEOMS[l.geom] && !GEOMS[l.geom].noData) ids.add(l.dataset);
+  const base = plotBase(g);
+  if (base.dataset) ids.add(base.dataset);
+  for (const l of g.layers || []) {
+    if (!l.hidden && GEOMS[l.geom] && !GEOMS[l.geom].noData && (l.dataset || base.dataset)) ids.add(l.dataset || base.dataset);
+  }
   for (const a of g.annotations || []) {
     if (a.analysis) ids.add(a.analysis);
     if (a.dataset) ids.add(a.dataset);

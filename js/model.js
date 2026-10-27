@@ -193,6 +193,7 @@ export function removeItem(project, id) {
   for (const it of project.items) {
     if (it.kind === 'graph') {
       it.annotations = (it.annotations || []).filter((a) => a.analysis !== id);
+      if (it.base?.dataset === id) it.base.dataset = '';
       for (const l of it.layers || []) if (l.dataset === id) l.dataset = '';
     }
     if (it.kind === 'transform' && it.input === id) it.input = '';

@@ -7,7 +7,9 @@ const cols = (names) => (names.length === 1 ? rsym(names[0]) : rvec(names.map(rs
 // Each step type: label, the dplyr / tidyr verb it uses, a short description
 // and a help text, default settings, its R code, and optionally a brief
 // one-line summary (otherwise the arguments of the code are shown).
-// `schema` is the input dataset's columns (for knowing which are numeric).
+// `schema` is the input dataset's columns (for knowing which are numeric);
+// `grouped` is the columns a group_by step before this one groups by (or null),
+// for steps that then work within each group.
 export const STEP_TYPES = {
   pivot_longer: {
     label: 'Wide → long (melt / pivot longer)',
@@ -132,10 +134,13 @@ export const STEP_TYPES = {
   summarise: {
     label: 'Summarise by group (mean, SD, SEM, n…)',
     verb: 'summarise', short: 'Mean, SD, SEM, n… per group',
-    brief: (s) => `${(s.stats || []).join(', ')} of ${s.column}${s.group_by?.length ? ` by ${s.group_by.join(', ')}` : ''}`,
+    brief: (s, grouped) => {
+      const by = grouped || s.group_by || [];
+      return `${(s.stats || []).join(', ')} of ${s.column}${by.length ? ` by ${by.join(', ')}` : ''}`;
+    },
     help: 'One row per group with summary statistics. Handy for pre-computed error bars or tables.',
     defaults: () => ({ group_by: [], column: '', stats: ['mean', 'sd', 'sem', 'n'] }),
-    code: (s) => {
+    code: (s, schema, grouped) => {
       if (!s.column) throw new Error('Choose the column to summarise.');
       const v = rsym(s.column);
       const all = {
@@ -149,7 +154,8 @@ export const STEP_TYPES = {
       };
       const chosen = (s.stats || []).filter((k) => all[k]).map((k) => all[k]);
       if (!chosen.length) throw new Error('Pick at least one statistic.');
-      const by = s.group_by?.length ? `, .by = ${cols(s.group_by)}` : '';
+      // After group_by: per group, and the result is no longer grouped.
+      const by = grouped ? ',\n    .groups = "drop"' : s.group_by?.length ? `, .by = ${cols(s.group_by)}` : '';
       return [`summarise(\n    ${chosen.join(',\n    ')}${by}\n  )`];
     },
   },
@@ -158,9 +164,9 @@ export const STEP_TYPES = {
     verb: 'arrange', short: 'Sort rows',
     help: '',
     defaults: () => ({ column: '', desc: false }),
-    code: (s) => {
+    code: (s, schema, grouped) => {
       if (!s.column) throw new Error('Choose a column.');
-      return [`arrange(${s.desc ? `desc(${rsym(s.column)})` : rsym(s.column)})`];
+      return [`arrange(${s.desc ? `desc(${rsym(s.column)})` : rsym(s.column)}${grouped ? ', .by_group = TRUE' : ''})`];
     },
   },
   drop_na: {
@@ -185,16 +191,17 @@ export const STEP_TYPES = {
   slice: {
     label: 'First, last or top rows (slice)',
     verb: 'slice', short: 'First, last, largest or smallest rows',
-    brief: (s) => {
+    brief: (s, grouped) => {
       const what = { head: `first ${s.n}`, tail: `last ${s.n}`, max: `${s.n} largest ${s.column}`, min: `${s.n} smallest ${s.column}` }[s.mode];
-      return `${what}${s.by?.length ? ` per ${s.by.join(', ')}` : ''}`;
+      const by = grouped || s.by || [];
+      return `${what}${by.length ? ` per ${by.join(', ')}` : ''}`;
     },
     help: 'Keep some of the rows: the first or last ones, or the ones with the largest or smallest values of a column. Pick columns under "Within each" to do this per group.',
     defaults: () => ({ mode: 'head', n: 5, column: '', by: [] }),
-    code: (s) => {
+    code: (s, schema, grouped) => {
       const n = Number(s.n);
       if (s.n === '' || !Number.isInteger(n) || n < 0) throw new Error('Type how many rows to keep.');
-      const by = s.by?.length ? `, by = ${cols(s.by)}` : '';
+      const by = !grouped && s.by?.length ? `, by = ${cols(s.by)}` : '';
       if (s.mode === 'max' || s.mode === 'min') {
         if (!s.column) throw new Error('Choose the column to rank the rows by.');
         return [`slice_${s.mode}(${rsym(s.column)}, n = ${n}${by})`];
@@ -210,10 +217,30 @@ export const STEP_TYPES = {
     defaults: () => ({ columns: [], sort: false }),
     code: (s) => [`count(${[...(s.columns || []).map(rsym), s.sort ? 'sort = TRUE' : null].filter(Boolean).join(', ')})`],
   },
+  group_by: {
+    label: 'Group rows (group_by)',
+    verb: 'group_by', short: 'Do the next steps for each group',
+    brief: (s) => s.columns.join(', '),
+    help: 'The steps after this one work within each group: mutate and filter use each group\'s own values (e.g. its mean), summarise and slice give one result per group, arrange sorts within groups. Grouping ends at ungroup or after a summarise.',
+    defaults: () => ({ columns: [] }),
+    code: (s) => {
+      if (!s.columns?.length) throw new Error('Choose the columns to group by.');
+      return [`group_by(${s.columns.map(rsym).join(', ')})`];
+    },
+  },
+  ungroup: {
+    label: 'Stop grouping (ungroup)',
+    verb: 'ungroup', short: 'Back to all rows together',
+    brief: () => 'all rows together',
+    help: 'The steps after this one work on all rows together again.',
+    defaults: () => ({}),
+    code: () => ['ungroup()'],
+  },
 };
 
 // How the "+" menu of a data table's pipeline groups the verbs.
 export const STEP_GROUPS = [
+  ['Groups', ['group_by', 'ungroup']],
   ['Rows', ['filter', 'arrange', 'slice', 'distinct', 'drop_na']],
   ['Columns', ['select', 'mutate', 'rename', 'convert', 'reorder']],
   ['Summarise and reshape', ['summarise', 'count', 'pivot_longer', 'pivot_wider', 'transpose']],
@@ -230,48 +257,61 @@ export const MUTATE_PRESETS = [
   { label: 'Difference from the first value', expr: (c) => `${rsym(c)} - first(${rsym(c)})` },
 ];
 
-export function transformCode(node, inputRName, inputSchema) {
-  const lines = [];
-  for (const step of node.steps || []) {
-    if (step.disabled) continue;
+// Each step's R code, or why it does not run (switched off, or not set up
+// yet), and the groups it works within. `grouped` is what is still grouped
+// after the last step.
+export function planSteps(steps, schema) {
+  let grouped = null;
+  const plan = steps.map((step, index) => {
+    const scope = grouped;
+    if (step.disabled) return { index, state: 'off', grouped: scope };
     const t = STEP_TYPES[step.type];
-    if (!t) throw new Error(`Unknown step type ${step.type}`);
-    for (const l of t.code(step, inputSchema)) lines.push(l);
-  }
-  if (!lines.length) return `${node.rname} <- ${inputRName}`;
-  return `${node.rname} <- ${inputRName} |>\n${lines.map((l) => '  ' + l).join(' |>\n')}`;
+    if (!t) return { index, state: 'incomplete', error: `Unknown step type ${step.type}`, grouped: scope };
+    try {
+      const code = t.code(step, schema, scope).join(' |> ');
+      if (step.type === 'group_by') grouped = step.columns;
+      else if (step.type === 'ungroup' || (step.type === 'summarise' && scope)) grouped = null;
+      return { index, state: 'run', code, grouped: scope };
+    } catch (e) {
+      return { index, state: 'incomplete', error: e.message, grouped: scope };
+    }
+  });
+  return { plan, grouped };
 }
 
-export function stepCode(step, schema) {
-  return STEP_TYPES[step.type].code(step, schema).join('\n');
+export function transformCode(node, inputRName, inputSchema) {
+  const { plan, grouped } = planSteps(node.steps || [], inputSchema);
+  const bad = plan.find((p) => p.state === 'incomplete');
+  if (bad) throw new Error(bad.error);
+  const lines = plan.filter((p) => p.state === 'run').map((p) => p.code);
+  // A result that is still grouped would surprise whatever uses it next.
+  if (grouped) lines.push('ungroup()');
+  if (!lines.length) return `${node.rname} <- ${inputRName}`;
+  return `${node.rname} <- ${inputRName} |>\n${lines.map((l) => '  ' + l.replace(/ \|> /g, ' |>\n  ')).join(' |>\n')}`;
+}
+
+export function stepCode(step, schema, grouped = null) {
+  return STEP_TYPES[step.type].code(step, schema, grouped).join('\n');
 }
 
 // One line saying what a step does, e.g. "weight > 5" for a filter.
 // incomplete = the step still needs settings (text says which).
-export function stepBrief(step, schema) {
+export function stepBrief(step, schema, grouped = null) {
   const t = STEP_TYPES[step.type];
   if (!t) return { text: `Unknown step ${step.type}`, incomplete: true };
   let code;
   try {
-    code = t.code(step, schema).join(' |> ').replace(/\s+/g, ' ');
+    code = t.code(step, schema, grouped).join(' |> ').replace(/\s+/g, ' ');
   } catch (e) {
     return { text: e.message, incomplete: true };
   }
-  if (t.brief) return { text: t.brief(step) };
+  if (t.brief) return { text: t.brief(step, grouped) };
   const m = code.match(/^\w+\((.*)\)$/);
   return { text: (m ? m[1] : code).replace(/^\( /, '(').replace(/ \)$/, ')') };
 }
 
-// A data table's pipeline: each step with its R code, or why it does not run
-// (switched off, or not set up yet). Steps that do not run are skipped.
+// A data table's pipeline: each step with its R code, or why it does not run.
+// Steps that do not run are skipped.
 export function pipePlan(steps, schema) {
-  return steps.map((step, index) => {
-    if (step.disabled) return { index, state: 'off' };
-    try {
-      return { index, state: 'run', code: STEP_TYPES[step.type].code(step, schema).join(' |> ') };
-    } catch (e) {
-      return { index, state: 'incomplete', error: e.message };
-    }
-  });
+  return planSteps(steps, schema).plan;
 }
-

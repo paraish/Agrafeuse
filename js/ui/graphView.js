@@ -6,7 +6,10 @@ import {
   columnOptions, levelsOf, section, codeBlock, messageBox, input, toast,
 } from './widgets.js';
 import { itemHeader, warningsBox } from './common.js';
-import { GEOMS, GEOM_CATEGORIES, AES, SHAPES, LINETYPES, THEMES, PALETTES, NUMBER_FORMATS, FONTS, geomDefaults, boldTitles } from '../codegen/graph.js';
+import {
+  GEOMS, GEOM_CATEGORIES, AES, PLOT_AES, SHAPES, LINETYPES, THEMES, PALETTES, NUMBER_FORMATS, FONTS,
+  geomDefaults, boldTitles, ensureBase, effectiveLayers,
+} from '../codegen/graph.js';
 import { TESTS } from '../codegen/stats.js';
 import { datasets, itemsOf, getItem, depsOf, clone } from '../model.js';
 
@@ -17,6 +20,7 @@ export class GraphView {
   constructor(app, item) {
     this.app = app;
     this.item = item;
+    ensureBase(item); // older graphs: what all layers share becomes plot-wide
     this.zoom = 'fit';
     this.el = h('div.view.split.graph-view');
     this.left = h('div.pane.controls', { 'data-scroll': 'controls' });
@@ -67,6 +71,7 @@ export class GraphView {
     const g = this.item;
     return h('div',
       itemHeader(this.app, g, 'Graph'),
+      section('Whole plot', this.baseCard(), { k: 'base', sub: this.baseSummary() }),
       section('Layers', [
         h('div.hint', 'Each layer draws the data one way. Layers listed first are drawn first (underneath).'),
         ...g.layers.map((l, i) => this.layerCard(l, i)),
@@ -75,6 +80,53 @@ export class GraphView {
       section('Statistics on the graph', this.annotations(), { k: 'stats' }),
       section('Custom ggplot2 code', this.customCode(), { k: 'custom', open: !!g.custom }),
       h('div.hint', 'Titles, axes, fonts, colours and layout are under the graph.'));
+  }
+
+  // ---- plot-wide data and aesthetics: ggplot(data, aes(...)) ------------------------------
+
+  baseSummary() {
+    const n = Object.values(this.item.base.aes).filter((m) => m?.col).length;
+    return n ? `${n} mapped` : '';
+  }
+
+  baseCard() {
+    const g = this.item;
+    const base = g.base;
+    const schema = this.schema(base.dataset);
+    const cols = columnOptions(schema);
+    const cell = (a) => {
+      const m = base.aes[a];
+      const numeric = schema?.columns?.find((c) => c.name === m?.col)?.type === 'numeric';
+      const asGroups = ['x', 'colour', 'fill', 'group'].includes(a) && m && numeric
+        ? checkbox(!!m.factor, 'as groups', (v) => { m.factor = v; this.changed(); }, { k: `base-${a}-f`, title: 'Treat the numbers as separate groups (categories)' }) : null;
+      return h('div.base-cell', { title: AES[a].title },
+        h('label', AES[a].label),
+        select(m?.col || '', cols, (v) => {
+          if (v) {
+            base.aes[a] = { mode: 'col', col: v };
+            // Layers that map the same column now just inherit it.
+            for (const l of g.layers) {
+              const own = l.aes?.[a];
+              if (own?.mode === 'col' && own.col === v && !own.factor && (!l.dataset || l.dataset === base.dataset)) delete l.aes[a];
+            }
+          } else delete base.aes[a];
+          this.changed(true);
+        }, { placeholder: '—', k: `base-${a}` }),
+        asGroups);
+    };
+    return h('div.card.base-card', h('div.card-body',
+      h('div.hint', 'Data and mappings for every layer, like ggplot(data, aes(…)). A layer can still use its own, or switch one off.'),
+      field('Data', bindSelect(base, 'dataset', datasets(this.app.store.project).map((d) => [d.id, d.name]), () => {
+        this.changed(true);
+        if (base.dataset && !this.schema(base.dataset)) this.app.engine.ensure(base.dataset);
+      }, { placeholder: '(each layer chooses its own)', k: 'base-ds' })),
+      h('div.base-aes', PLOT_AES.map(cell))));
+  }
+
+  // The plot-wide mapping a layer would inherit for an aesthetic, if any.
+  inherited(l, a) {
+    const m = this.item.base?.aes?.[a];
+    return !GEOMS[l.geom].noData && m?.mode === 'col' && m.col ? m : null;
   }
 
   layerCard(l, i) {
@@ -103,12 +155,13 @@ export class GraphView {
     if (geom.custom) {
       body = [this.codeBox(l, 'code', 'e.g. annotate("text", x = 1, y = 10, label = "n = 12")', k('code'))];
     } else {
-      const schema = geom.noData ? null : this.schema(l.dataset);
+      const plotData = g.base?.dataset ? getItem(this.app.store.project, g.base.dataset) : null;
+      const schema = geom.noData ? null : this.schema(l.dataset || g.base?.dataset);
       body = [
         geom.noData ? null : field('Data', bindSelect(l, 'dataset', datasets(this.app.store.project).map((d) => [d.id, d.name]), () => {
           this.changed(true);
-          if (!this.schema(l.dataset)) this.app.engine.ensure(l.dataset);
-        }, { placeholder: 'Choose a dataset…', k: k('ds') })),
+          if (l.dataset && !this.schema(l.dataset)) this.app.engine.ensure(l.dataset);
+        }, { placeholder: plotData ? `The plot's data (${plotData.name})` : 'Choose a dataset…', k: k('ds') })),
         h('div.aes-grid', geom.aes.map((a) => this.aesRow(l, a, schema, k(`aes-${a}`)))),
         geom.params.length ? h('div.params', geom.params.map((p) => this.paramRow(l, p, k(`p-${p.key}`)))) : null,
       ];
@@ -116,33 +169,51 @@ export class GraphView {
     return h('div.card.layer', { class: l.hidden ? 'off' : '' }, head, h('div.card-body', body));
   }
 
+  // One aesthetic of a layer. Unset = the plot-wide mapping, if there is one.
   aesRow(l, a, schema, k) {
     const def = AES[a];
-    const m = l.aes[a] || { mode: 'none' };
-    const required = GEOMS[l.geom].required.includes(a);
+    const from = this.inherited(l, a);
+    const m = l.aes[a] || (from ? { mode: 'inherit' } : { mode: 'none' });
+    const required = GEOMS[l.geom].required.includes(a) && !from;
     const colOpts = columnOptions(schema);
     const colType = schema?.columns?.find((c) => c.name === m.col)?.type;
     const setMap = (patch) => { l.aes[a] = { ...m, ...patch }; };
     const asGroups = (a === 'x' || a === 'colour' || a === 'fill' || a === 'group') && m.mode === 'col' && colType === 'numeric'
       ? checkbox(!!m.factor, 'as groups', (v) => { setMap({ factor: v }); this.changed(); }, { k: `${k}-f`, title: 'Treat the numbers as separate groups (categories)' }) : null;
-    const colSelect = () => select(m.col || '', colOpts, (v) => {
-      if (v) setMap({ mode: 'col', col: v }); else delete l.aes[a];
-      this.changed(true);
-    }, { placeholder: required ? 'Choose a column…' : '—', k: `${k}-col` });
+    const label = h('label', { title: def.title }, def.label, required ? h('span.req', ' *') : null);
 
     if (def.mapOnly) {
-      return h('div.aes-row', h('label', def.label, required ? h('span.req', ' *') : null), h('div.aes-ctl', colSelect(), asGroups));
+      // One menu: the plot's mapping (if any), a column, or (when the plot maps it) none.
+      const value = m.mode === 'col' ? m.col || '' : m.mode === 'none' && from ? '__none' : '';
+      const opts = from && !GEOMS[l.geom].required.includes(a) ? [...colOpts, ['__none', '(none in this layer)']] : colOpts;
+      const sel = select(value, opts, (v) => {
+        if (v === '__none') l.aes[a] = { mode: 'none' };
+        else if (v) setMap({ mode: 'col', col: v });
+        else delete l.aes[a];
+        this.changed(true);
+      }, { placeholder: from ? `from the plot: ${from.col}` : required ? 'Choose a column…' : '—', k: `${k}-col` });
+      if (from && m.mode === 'inherit') sel.classList.add('inherits');
+      return h('div.aes-row', label, h('div.aes-ctl', sel, asGroups));
     }
-    const modes = segmented([['none', '—', 'Not set (use the default)'], ['col', 'Column', 'Varies with a column'], ['const', 'Fixed', 'One fixed value']], m.mode, (mode) => {
-      if (mode === 'none') delete l.aes[a];
+    const modes = from
+      ? [['inherit', 'Plot', `Use the plot-wide mapping (${from.col})`], ['col', 'Column', 'Varies with a column'], ['const', 'Fixed', 'One fixed value'], ['none', 'Off', 'Not used in this layer']]
+      : [['none', '—', 'Not set (use the default)'], ['col', 'Column', 'Varies with a column'], ['const', 'Fixed', 'One fixed value']];
+    const seg = segmented(modes, m.mode, (mode) => {
+      if (mode === 'inherit' || (mode === 'none' && !from)) delete l.aes[a];
+      else if (mode === 'none') l.aes[a] = { mode: 'none' };
       else if (mode === 'col') l.aes[a] = { mode: 'col', col: l.aes[a]?.col || '' };
       else l.aes[a] = { mode: 'const', value: defaultConst(a) };
       this.changed(true);
     }, { k: `${k}-mode`, small: true });
     let ctl = null;
-    if (m.mode === 'col') ctl = colSelect();
-    else if (m.mode === 'const') ctl = this.constControl(l, a, m, k);
-    return h('div.aes-row', h('label', def.label), h('div.aes-ctl', modes, ctl, asGroups));
+    if (m.mode === 'inherit') ctl = h('span.inherited', { title: 'From the whole-plot settings' }, from.col);
+    else if (m.mode === 'col') {
+      ctl = select(m.col || '', colOpts, (v) => {
+        if (v) setMap({ mode: 'col', col: v }); else delete l.aes[a];
+        this.changed(true);
+      }, { placeholder: '—', k: `${k}-col` });
+    } else if (m.mode === 'const') ctl = this.constControl(l, a, m, k);
+    return h('div.aes-row', label, h('div.aes-ctl', seg, ctl, asGroups));
   }
 
   constControl(l, a, m, k) {
@@ -176,12 +247,19 @@ export class GraphView {
     const old = l.params || {};
     l.params = geomDefaults(key);
     for (const p of geom.params) if (old[p.key] !== undefined) l.params[p.key] = old[p.key];
-    if (!geom.noData && !l.dataset) l.dataset = this.item.layers.find((x) => x.dataset)?.dataset || '';
+    if (!geom.noData && !l.dataset && !this.item.base?.dataset) l.dataset = this.item.layers.find((x) => x.dataset)?.dataset || '';
     this.changed(true);
   }
 
   addLayer() {
     const g = this.item;
+    if (g.base?.dataset) {
+      // Inherits the plot's data and mappings; a summary layer if X and Y are mapped.
+      const geom = g.base.aes.x?.col && g.base.aes.y?.col ? 'mean_point' : 'point';
+      g.layers.push({ id: `l${Date.now().toString(36)}`, geom, dataset: '', aes: {}, params: geomDefaults(geom) });
+      this.changed(true);
+      return;
+    }
     const base = g.layers.find((l) => l.dataset && !GEOMS[l.geom].noData);
     const aes = {};
     if (base) for (const a of ['x', 'y']) if (base.aes[a]) aes[a] = { ...base.aes[a] };
@@ -212,7 +290,7 @@ export class GraphView {
     const usable = analyses.filter((a) => (TESTS[a.test]?.annotations || []).length);
     if (!usable.length) {
       return [h('div.hint', 'Show p values, fitted curves or test results from an analysis on this graph. First run an analysis on this data.'),
-        button('New analysis…', () => this.app.newAnalysisDialog(g.layers.find((l) => l.dataset)?.dataset), { iconName: 'stats' })];
+        button('New analysis…', () => this.app.newAnalysisDialog(g.base?.dataset || g.layers.find((l) => l.dataset)?.dataset), { iconName: 'stats' })];
     }
     const cards = (g.annotations || []).map((ann, i) => {
       const an = getItem(this.app.store.project, ann.analysis);
@@ -257,7 +335,7 @@ export class GraphView {
       h('div.add-row', button('Add statistics', () => {
         // Prefer an analysis of the data this graph shows (or of the table it came from).
         const p = this.app.store.project;
-        const shown = new Set(g.layers.map((l) => l.dataset).filter(Boolean));
+        const shown = new Set(effectiveLayers(g).map((l) => l.dataset).filter(Boolean));
         for (const id of [...shown]) { const src = getItem(p, id); if (src?.kind === 'transform') shown.add(src.input); }
         const a = [...usable].reverse().find((x) => shown.has(x.dataset)) || usable[usable.length - 1];
         g.annotations = g.annotations || [];
@@ -270,8 +348,9 @@ export class GraphView {
 
   // ---- formatting panel (under the graph) --------------------------------------------------
 
+  // The first layer with an X column (with what it inherits from the plot).
   mainLayer() {
-    return this.item.layers.find((l) => !GEOMS[l.geom].noData && l.aes?.x?.mode === 'col');
+    return effectiveLayers(this.item).find((l) => !GEOMS[l.geom].noData && l.aes?.x?.mode === 'col');
   }
 
   renderFormat() {
@@ -381,7 +460,7 @@ export class GraphView {
     g.palette = g.palette || { name: 'default', manual: {} };
     const leg = g.style.legend_text = g.style.legend_text || {};
     const ch = (s) => () => this.changed(s);
-    const owner = g.layers.find((l) => ['colour', 'fill'].some((a) => l.aes?.[a]?.mode === 'col'));
+    const owner = effectiveLayers(g).find((l) => !GEOMS[l.geom].noData && ['colour', 'fill'].some((a) => l.aes?.[a]?.mode === 'col'));
     const aesKey = owner ? (owner.aes.fill?.mode === 'col' ? 'fill' : 'colour') : null;
     const levels = owner ? levelsOf(this.schema(owner.dataset), owner.aes[aesKey].col) : [];
     const pal = g.palette;
@@ -409,7 +488,7 @@ export class GraphView {
     g.facet = g.facet || { by: '' };
     const ch = (s) => () => this.changed(s);
     const main = this.mainLayer();
-    const cols = main ? columnOptions(this.schema(main.dataset)) : [];
+    const cols = columnOptions(this.schema(main?.dataset || g.base?.dataset));
     return h('div.fmt-cols',
       h('div.fmt-col',
         h('h4', 'Look'),

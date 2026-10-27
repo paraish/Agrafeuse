@@ -4,6 +4,7 @@
 //   ctx.levels(col, i)   the values of a column, as step i sees them
 //   ctx.changed(structural)  call after a change (structural = redraw the controls)
 //   ctx.engine           for checking typed R code
+//   ctx.scope(i)         the columns an earlier group_by groups step i by, or null
 import { h, fill, debounce } from './dom.js';
 import { field, select, bindSelect, bindInput, bindCheck, multiCheck, iconButton } from './widgets.js';
 import { MUTATE_PRESETS } from '../codegen/transform.js';
@@ -17,6 +18,8 @@ export function stepFields(step, i, ctx) {
   const k = (name) => `s${i}-${name}`;
   const ch = (structural) => () => ctx.changed(structural);
   const pick = (key, label) => field(label, multiCheck(cols, step[key], (v) => { step[key] = v; ctx.changed(); }, { k: k(key) }));
+  const grouped = ctx.scope?.(i) || null;
+  const perGroup = (what) => h('div.hint.per-group', `${what} per group (grouped by ${grouped.join(', ')}).`);
   switch (step.type) {
     case 'pivot_longer':
       return [
@@ -102,13 +105,14 @@ export function stepFields(step, i, ctx) {
     case 'summarise':
       return [
         field('Summarise', bindSelect(step, 'column', cols, ch(), { placeholder: 'Choose a number column…', k: k('col') })),
-        pick('group_by', 'For each combination of'),
+        grouped ? perGroup('One row') : pick('group_by', 'For each combination of'),
         field('Statistics', multiCheck([['mean', 'Mean'], ['sd', 'SD'], ['sem', 'SEM'], ['n', 'n'], ['median', 'Median'], ['min', 'Min'], ['max', 'Max']], step.stats, (v) => { step.stats = v; ctx.changed(); }, { k: k('stats') })),
       ];
     case 'arrange':
       return [h('div.row2',
         field('Sort by', bindSelect(step, 'column', cols, ch(), { placeholder: 'Choose…', k: k('col') })),
-        bindCheck(step, 'desc', 'Largest first', ch(), { k: k('desc') }))];
+        bindCheck(step, 'desc', 'Largest first', ch(), { k: k('desc') })),
+      grouped ? perGroup('Sorted') : null];
     case 'drop_na':
       return [field('Look for empty cells in', multiCheck(cols, step.columns, (v) => { step.columns = v; ctx.changed(); }, { k: k('columns') }), { hint: 'Nothing ticked = any column.' })];
     case 'distinct':
@@ -122,13 +126,17 @@ export function stepFields(step, i, ctx) {
           bindSelect(step, 'mode', [['head', 'First'], ['tail', 'Last'], ['max', 'Largest'], ['min', 'Smallest']], ch(true), { k: k('mode') }),
           bindInput(step, 'n', ch(), { k: k('n'), type: 'number', min: 0, step: 1, placeholder: 'n' }),
           ['max', 'min'].includes(step.mode) ? bindSelect(step, 'column', cols, ch(), { placeholder: 'of column…', k: k('col') }) : h('span.hint', 'rows')),
-        pick('by', 'Within each (optional)'),
+        grouped ? perGroup('Rows kept') : pick('by', 'Within each (optional)'),
       ];
     case 'count':
       return [
         pick('columns', 'Count rows for each combination of'),
         bindCheck(step, 'sort', 'Largest counts first', ch(), { k: k('sort') }),
       ];
+    case 'group_by':
+      return [pick('columns', 'Group by')];
+    case 'ungroup':
+      return [grouped ? h('div.hint', `Ends the grouping by ${grouped.join(', ')}.`) : h('div.hint', 'Nothing is grouped here, so this step does nothing.')];
     default:
       return [];
   }

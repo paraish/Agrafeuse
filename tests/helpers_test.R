@@ -34,6 +34,14 @@ ok("pipe eval: failing step", {
   r <- jsonlite::fromJSON(ag_pipe_eval(tg, c("arrange(len)", "filter(nope > 1)", "slice_head(n = 1)")))
   stopifnot(r$failed == 2, grepl("nope", r$error), r$table$nrow == nrow(tg))
 })
+ok("pipe eval: grouped result is ungrouped", {
+  r <- jsonlite::fromJSON(ag_pipe_eval(tg, c("group_by(supp)", "mutate(z = len - mean(len))")))
+  stopifnot(is.null(r$failed), r$table$nrow == nrow(tg))
+})
+ok("versions", {
+  v <- jsonlite::fromJSON(ag_versions(c("ggplot2", "dplyr", "notapackage")))
+  stopifnot(grepl("^[0-9]+[.][0-9]", v$r), !is.null(v$packages$ggplot2), is.null(v$packages$notapackage))
+})
 ok("pipe eval: no steps, full precision", {
   r <- jsonlite::fromJSON(ag_pipe_eval(data.frame(x = 1/3), character(), Inf, 15))
   stopifnot(r$table$rows[[1]] == "0.333333333333333")

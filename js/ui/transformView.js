@@ -3,7 +3,7 @@ import { h, fill, rebuild, debounce } from './dom.js';
 import { field, select, bindSelect, iconButton, levelsOf, dataTable, section, codeBlock, messageBox } from './widgets.js';
 import { itemHeader, warningsBox } from './common.js';
 import { stepFields } from './steps.js';
-import { STEP_TYPES } from '../codegen/transform.js';
+import { STEP_TYPES, planSteps } from '../codegen/transform.js';
 import { datasets, getItem, depsOf } from '../model.js';
 
 export class TransformView {
@@ -85,11 +85,13 @@ export class TransformView {
   stepCard(step, i) {
     const t = STEP_TYPES[step.type];
     const it = this.item;
+    const grouped = planSteps(it.steps, this.app.engine.schemaOf(it.input)).plan[i]?.grouped;
     const body = stepFields(step, i, {
       columns: (j) => this.columnsFor(j),
       levels: (col) => this.levelsFor(col),
       changed: (structural) => this.changed(structural),
       engine: this.app.engine,
+      scope: () => grouped,
     });
     const move = (d) => {
       const j = i + d;
@@ -100,6 +102,7 @@ export class TransformView {
     return h('div.card.step', { class: step.disabled ? 'off' : '' },
       h('div.card-head',
         h('span.step-n', String(i + 1)), h('span.card-title', t.label),
+        grouped ? h('span.group-tag', { title: `Works within each group of ${grouped.join(', ')}` }, `per ${grouped.join(', ')}`) : null,
         h('span.grow'),
         iconButton(step.disabled ? 'eyeOff' : 'eye', step.disabled ? 'Turn this step on' : 'Turn this step off', () => { step.disabled = !step.disabled; this.changed(true); }),
         iconButton('up', 'Move up', () => move(-1), { disabled: i === 0 }),

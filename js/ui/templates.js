@@ -1,6 +1,7 @@
 // Ready-made starting points for new graphs. Each one is just a set of layers,
 // which the user can then change or add to.
 import { newGraph } from '../model.js';
+import { ensureBase } from '../codegen/graph.js';
 
 const map = (c) => (c ? { mode: 'col', col: c } : undefined);
 const fixed = (v) => ({ mode: 'const', value: v });
@@ -112,5 +113,7 @@ export function graphFromTemplate(project, key, { dataset, x, y, group, name }) 
   g.labels = { title: '', x: '', y: '', legend: '' };
   if (['scatter_dot', 'bar_points', 'box', 'violin'].includes(key)) g.labels.hide_x = false;
   g.layers = (g.layers || []).map((l) => ({ ...l, aes: Object.fromEntries(Object.entries(l.aes).filter(([, v]) => v)) }));
-  return newGraph(project, g);
+  // What the layers share (data, X, Y…) becomes plot-wide, for every layer to inherit.
+  if (!g.layers.length) g.base = { dataset, aes: { ...(x ? { x: map(x) } : {}), ...(y ? { y: map(y) } : {}) } };
+  return newGraph(project, ensureBase(g));
 }

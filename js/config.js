@@ -8,6 +8,7 @@ function sameSite(value) {
 }
 
 const override = sameSite(params.get('webr'));
+const WEBR_VERSION = '0.6.0';
 
 export const config = {
   // webR builds to try, in order: the official CDN, then the same release on jsDelivr.
@@ -15,9 +16,11 @@ export const config = {
   webrSources: override
     ? [{ base: override, module: params.get('webr_module') === 'webr.js' ? 'webr.js' : 'webr.mjs' }]
     : [
-      { base: 'https://webr.r-wasm.org/v0.6.0/', module: 'webr.mjs' },
-      { base: 'https://cdn.jsdelivr.net/npm/webr@0.6.0/dist/', module: 'webr.js' },
+      { base: `https://webr.r-wasm.org/v${WEBR_VERSION}/`, module: 'webr.mjs' },
+      { base: `https://cdn.jsdelivr.net/npm/webr@${WEBR_VERSION}/dist/`, module: 'webr.js' },
     ],
+  // Shown with the R version (unknown when self-hosted from ?webr=).
+  webrVersion: override ? '' : WEBR_VERSION,
   // Repository of R packages compiled for webR.
   repoUrl: 'https://repo.r-wasm.org/',
   // 'webr' (default) or 'bridge' (native R through dev/r-bridge.mjs).

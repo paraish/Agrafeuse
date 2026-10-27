@@ -16,7 +16,7 @@ export class CodeView {
   onChange() { this.render(); }
 
   script() {
-    return projectScript(this.app.store.project, { helpers: this.app.engine.helpers || '# (helpers load when R starts)', schemaOf: this.app.engine.schemaOf, includeHelpers: this.includeHelpers, mixedEngine: this.app.engine.mixedChoice || 'lme4' });
+    return projectScript(this.app.store.project, { helpers: this.app.engine.helpers || '# (helpers load when R starts)', schemaOf: this.app.engine.schemaOf, includeHelpers: this.includeHelpers, mixedEngine: this.app.engine.mixedChoice || 'lme4', versions: this.app.engine.versions });
   }
 
   render() {

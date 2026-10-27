@@ -6,7 +6,7 @@ import { h, fill, icon, rebuild, debounce } from './dom.js';
 import { button, iconButton, dataTable, section, codeBlock, messageBox, toast, levelsOf } from './widgets.js';
 import { warningsBox } from './common.js';
 import { stepFields } from './steps.js';
-import { STEP_TYPES, STEP_GROUPS, stepBrief, transformCode } from '../codegen/transform.js';
+import { STEP_TYPES, STEP_GROUPS, stepBrief, transformCode, planSteps } from '../codegen/transform.js';
 import { newDataTable, newTransform, uniqueName, clone } from '../model.js';
 
 // Whether each table's panel is open, for as long as the page is open.
@@ -64,10 +64,17 @@ export class PipePanel {
     return this.res?.input || this.app.engine.schemaOf(this.item.id);
   }
 
+  // The columns a group_by groups each step by (null = not grouped).
+  scopes() {
+    return planSteps(this.steps, this.app.engine.schemaOf(this.item.id)).plan.map((p) => p.grouped);
+  }
+
   ctx() {
+    const scopes = this.scopes();
     return {
       columns: (i) => (this.schemaAt(i)?.columns || []).map((c) => [c.name, c.name]),
       levels: (col, i) => levelsOf(this.schemaAt(i), col),
+      scope: (i) => scopes[i],
       changed: (structural) => this.changed(structural),
       engine: this.app.engine,
     };
@@ -211,6 +218,7 @@ export class PipePanel {
 
   panel() {
     const steps = this.steps;
+    const scopes = this.scopes();
     const input = this.res?.input || this.app.engine.schemaOf(this.item.id);
     return h('div.pipe-inner',
       h('div.pipe-head',
@@ -221,7 +229,7 @@ export class PipePanel {
       h('div.pipe-scroll', { 'data-scroll': 'pipe' },
         h('div.pipe-source', { title: 'The pipeline starts from this table. It never changes the table itself.' },
           h('code', this.item.rname), h('span.grow'), dims(input)),
-        h('ol.pipe-steps', steps.map((s, i) => this.stepRow(s, i))),
+        h('ol.pipe-steps', steps.map((s, i) => this.stepRow(s, i, scopes[i]))),
         h('button.pipe-add', { type: 'button', 'data-k': 'pipe-add', onclick: (e) => this.menu(e.currentTarget) },
           icon('plus'), steps.length ? 'Add a step' : 'Add a first step (filter, summarise, select…)')),
       h('div.pipe-foot',
@@ -235,10 +243,12 @@ export class PipePanel {
         })));
   }
 
-  stepRow(step, i) {
+  // grouped: the columns an earlier group_by groups this step by (it is shown
+  // indented under that group_by).
+  stepRow(step, i, grouped) {
     const t = STEP_TYPES[step.type];
     const p = this.res?.plan?.[i];
-    const brief = stepBrief(step, this.schemaAt(i));
+    const brief = stepBrief(step, this.schemaAt(i), grouped);
     const state = step.disabled ? 'off' : brief.incomplete ? 'incomplete' : p?.state || 'run';
     const open = step === this.editing;
     const last = this.steps.length - 1;
@@ -249,7 +259,7 @@ export class PipePanel {
             : dims(p?.stage);
     const row = h('div.pipe-row', {
       draggable: 'true',
-      title: `${t.label}: ${brief.text}\nClick to edit, drag to move.`,
+      title: `${t.label}: ${brief.text}${grouped ? `\nWorks within each group of ${grouped.join(', ')}.` : ''}\nClick to edit, drag to move.`,
       onclick: () => { this.editing = open ? null : step; this.render(); if (!open) this.onShow('result'); },
       ondragstart: (e) => {
         this.dragFrom = i;
@@ -265,7 +275,7 @@ export class PipePanel {
     h('span.pipe-brief', { class: brief.incomplete ? 'incomplete' : '' }, brief.text),
     badge);
     const li = h('li.pipe-step', {
-      class: [state, open ? 'open' : ''].join(' '),
+      class: [state, open ? 'open' : '', grouped ? 'in-group' : ''].join(' '),
       'data-step': i,
       ondragover: (e) => {
         if (this.dragFrom == null) return;

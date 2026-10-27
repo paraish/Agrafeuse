@@ -16,6 +16,8 @@ const TMP = '/tmp/agrafeuse';
 class WebRBackend {
   name = 'webR';
 
+  label() { return config.webrVersion ? `webR ${config.webrVersion}` : 'webR'; }
+
   async init(status) {
     status('Downloading R (about 30 MB the first time, then cached)…');
     let lastError;
@@ -53,6 +55,8 @@ class WebRBackend {
 
 class BridgeBackend {
   name = 'native R (bridge)';
+
+  label() { return 'your own R, through the bridge'; }
 
   async init(status) {
     status('Connecting to local R…');
@@ -113,6 +117,7 @@ export class Engine extends EventTarget {
     this.pending = new Map();
     this.dataSchemas = new Map();
     this.helpers = '';
+    this.versions = null; // { r, runtime, packages: { name: version } }
   }
 
   setStatus(state, text) {
@@ -153,6 +158,7 @@ export class Engine extends EventTarget {
         await this.ensurePackages([...BASE_PACKAGES, 'jsonlite'], true);
         await this.backend.evalString(`suppressPackageStartupMessages({ ${BASE_PACKAGES.map((p) => `library(${p})`).join('; ')} }); dir.create(${rstr(TMP)}, showWarnings = FALSE, recursive = TRUE); "ok"`);
         await this.backend.evalString(`local({ exprs <- parse(text = ${rstr(this.helpers)}); for (e in exprs) eval(e, globalenv()) }); "ok"`);
+        await this.updateVersions();
         this.setStatus('ready', `R ready (${this.backend.name})`);
       } catch (e) {
         console.error(e);
@@ -185,6 +191,18 @@ export class Engine extends EventTarget {
       }
     }
     need.forEach((p) => this.installed.add(p));
+    if (!starting) await this.updateVersions();
+  }
+
+  // Versions of R and of every package loaded so far (the footer lists them).
+  async updateVersions() {
+    try {
+      const v = JSON.parse(await this.backend.evalString(`ag_versions(${rstrvec([...this.installed, 'scales'])})`));
+      this.versions = { r: v.r, runtime: this.backend.label(), packages: v.packages || {} };
+      this.dispatchEvent(new CustomEvent('versions', { detail: this.versions }));
+    } catch (e) {
+      console.warn('Could not read package versions:', e);
+    }
   }
 
   // Run code; returns { ok, error, warnings, messages, value }.

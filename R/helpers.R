@@ -808,6 +808,7 @@ ag_pipe_eval <- function(df, steps, n = 200, digits = 6) {
     df <- res
     out$stages[[i]] <- ag_describe_list(df)
   }
+  if (inherits(df, "grouped_df")) df <- dplyr::ungroup(df)
   out$table <- ag_table_list(df, n, digits)
   out$table$nrow <- nrow(df)
   ag_json(out)
@@ -924,6 +925,14 @@ ag_load_rdata <- function(file) {
     if (is.data.frame(obj)) frames[[nm]] <- ag_table_list(obj)
   }
   ag_json(list(project = project, frames = frames, objects = I(nms)))
+}
+
+# The R version and the versions of the packages the app has loaded, for the
+# disclaimer and for citing them.
+ag_versions <- function(pkgs) {
+  pkgs <- pkgs[vapply(pkgs, function(p) nzchar(system.file(package = p)), logical(1))]
+  vers <- vapply(pkgs, function(p) as.character(utils::packageVersion(p)), character(1))
+  ag_json(list(r = paste(R.version$major, R.version$minor, sep = "."), packages = as.list(vers)))
 }
 
 # Check that a piece of user-written code parses, without running it.

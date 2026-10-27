@@ -28,6 +28,9 @@ const R_DATASETS = [
   ['iris', 'iris: flower measurements'], ['mtcars', 'mtcars: car data'], ['airquality', 'airquality: New York air quality'],
 ];
 
+// The column a table's row names become in R.
+const isRowNames = (name) => /^row_name(_\d+)?$/.test(name);
+
 export class App {
   constructor(root, store, engine) {
     this.root = root;
@@ -43,6 +46,7 @@ export class App {
     });
     store.addEventListener('history', () => this.updateHistoryButtons());
     engine.addEventListener('status', (e) => this.updateStatus(e.detail));
+    engine.addEventListener('versions', () => { if (this.versionsEl) this.versionsEl.textContent = this.versionsText(); });
     engine.addEventListener('result', (e) => {
       this.updateNavStatus(e.detail.id);
       this.view?.onResult?.(e.detail);
@@ -93,9 +97,18 @@ export class App {
       h('p.lab', `${ABOUT.name} is made by the Misra Lab. Want to see what else we do? Visit `, link(ABOUT.lab, 'misralab.ca'), '. ',
         AI_CREDIT),
       h('p.legal', 'For research use only, not for diagnostic procedures. Provided as is, without warranty. ',
-        'Statistics are computed by R; please also cite R and the R packages your analysis used (listed in its R code). ',
+        'Statistics are computed by R; please also cite R and the R packages your analysis used. ',
+        this.versionsEl = h('span.versions', this.versionsText()), ' ',
         'Free software under the ', link(ABOUT.license, 'GNU AGPL v3'), '; ',
         link(ABOUT.url, 'source code'), '. Your data stays on your computer.'));
+  }
+
+  // "R 4.6.0 (webR 0.6.0) with ggplot2 3.5.2, dplyr 1.1.4…": what this session computes with.
+  versionsText() {
+    const v = this.engine.versions;
+    if (!v) return 'The R and package versions in use appear here once R has started.';
+    const pkgs = Object.entries(v.packages).sort(([a], [b]) => a.localeCompare(b)).map(([p, ver]) => `${p} ${ver}`);
+    return `Versions in use: R ${v.r} (${v.runtime})${pkgs.length ? `, ${pkgs.join(', ')}` : ''}.`;
   }
 
   renderNav() {
@@ -230,7 +243,7 @@ export class App {
     }
     const g = graphFromTemplate(p, template, { ...opts, name: uniqueName(p, `${a.name} graph`) });
     if (template === 'blank') {
-      g.layers.push({ id: `l${Date.now().toString(36)}`, geom: 'point', dataset: opts.dataset, aes: { x: { mode: 'col', col: opts.x }, y: { mode: 'col', col: opts.y } }, params: {} });
+      g.layers.push({ id: `l${Date.now().toString(36)}`, geom: 'point', dataset: '', aes: {}, params: {} }); // data, X and Y from the plot
       if (a.options?.model === '4pl' && !a.options?.logx) g.x_scale = { trans: 'log10', min: '', max: '', from_zero: false };
     }
     return g;
@@ -312,7 +325,7 @@ export class App {
     if (!ok) return;
     const schema = this.engine.schemaOf(input);
     const nums = (schema?.columns || []).filter((c) => c.type === 'numeric').map((c) => c.name);
-    const facs = (schema?.columns || []).filter((c) => c.type !== 'numeric');
+    const facs = (schema?.columns || []).filter((c) => c.type !== 'numeric' && !isRowNames(c.name));
     const steps = nums.length >= 2 && !facs.length ? [{ type: 'pivot_longer', cols: nums, names_to: 'group', values_to: 'value', drop_na: true }] : [];
     const src = getItem(p, input);
     this.added(newTransform(p, input, steps, uniqueName(p, `${src.name} (${steps.length ? 'long' : 'transformed'})`)));
@@ -323,7 +336,7 @@ export class App {
     if (!it) return null;
     if (it.kind === 'data' || it.kind === 'transform') return it.id;
     if (it.kind === 'analysis') return it.dataset;
-    if (it.kind === 'graph') return it.layers.find((l) => l.dataset)?.dataset;
+    if (it.kind === 'graph') return it.base?.dataset || it.layers.find((l) => l.dataset)?.dataset;
     return null;
   }
 
@@ -357,9 +370,10 @@ export class App {
       const s = this.engine.schemaOf(state.dataset);
       const cols = s?.columns || [];
       const nums = cols.filter((c) => c.type === 'numeric').map((c) => c.name);
-      const facs = cols.filter((c) => c.type !== 'numeric').map((c) => c.name);
+      // Row names (subject IDs) are a last resort for X or groups.
+      const facs = cols.filter((c) => c.type !== 'numeric').map((c) => c.name).sort((a, b) => isRowNames(a) - isRowNames(b));
       const t = GRAPH_TEMPLATES.find((x) => x.key === state.template);
-      state.wide = nums.length >= 2 && !facs.length && !t.numericX && t.needs.includes('x');
+      state.wide = nums.length >= 2 && !facs.some((f) => !isRowNames(f)) && !t.numericX && t.needs.includes('x');
       if (state.wide) { state.x = 'group'; state.y = 'value'; state.group = ''; return; }
       state.x = t.numericX ? nums[0] || '' : facs[0] || nums[0] || '';
       state.y = nums.find((n) => n !== state.x) || '';
@@ -516,7 +530,7 @@ export class App {
   }
 
   exportScript() {
-    const code = projectScript(this.store.project, { helpers: this.engine.helpers, schemaOf: this.engine.schemaOf, mixedEngine: this.engine.mixedChoice || 'lme4' });
+    const code = projectScript(this.store.project, { helpers: this.engine.helpers, schemaOf: this.engine.schemaOf, mixedEngine: this.engine.mixedChoice || 'lme4', versions: this.engine.versions });
     download(code, safeFilename(this.store.project.name, 'R'), 'text/plain');
   }
 

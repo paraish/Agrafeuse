@@ -4,7 +4,7 @@ import { ABOUT, CITATION } from '../about.js';
 
 export const BASE_PACKAGES = ['ggplot2', 'dplyr', 'tidyr'];
 
-export function projectScript(project, { helpers, schemaOf, includeHelpers = true, date = new Date(), mixedEngine = 'lme4' }) {
+export function projectScript(project, { helpers, schemaOf, includeHelpers = true, date = new Date(), mixedEngine = 'lme4', versions = null }) {
   const order = topoOrder(project);
   const opts = { mixedEngine };
   const pkgs = [...new Set([...BASE_PACKAGES, ...order.flatMap((it) => itemPackages(it, opts))])];
@@ -15,6 +15,10 @@ export function projectScript(project, { helpers, schemaOf, includeHelpers = tru
   out.push('#');
   out.push(`# If ${ABOUT.name} contributed to your work, please cite: ${CITATION}`);
   out.push('# Please also cite R and the R packages used: citation(); citation("ggplot2"); etc.');
+  if (versions) {
+    const pk = Object.entries(versions.packages || {}).sort(([a], [b]) => a.localeCompare(b)).map(([p, v]) => `${p} ${v}`);
+    out.push(`# Made with R ${versions.r} (${versions.runtime})${pk.length ? `, ${pk.join(', ')}` : ''}.`);
+  }
   out.push(`# Packages needed: install.packages(c(${pkgs.map((p) => `"${p}"`).join(', ')}))`);
   out.push('');
   for (const p of BASE_PACKAGES) out.push(`library(${p})`);

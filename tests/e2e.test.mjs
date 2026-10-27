@@ -228,6 +228,41 @@ try {
   check(await page.inputValue('.title-input') === 'Plant growth (pipeline)' && /3 rows × 5 columns/.test(await page.textContent('.out-head')),
     'pipeline became a linked transform');
 
+  // group_by: the steps after it work per group (shown nested under it).
+  await page.click('.nav-item:has(.name:text-is("Plant growth"))');
+  await page.waitForSelector('.pipe-step');
+  await addStep('group_by');
+  await page.check('[data-k="s3-columns:group"]');
+  await page.click('[data-k="s3-up"]');
+  await page.click('[data-k="s2-up"]');
+  await settle();
+  check(await verbs() === 'pivot_longer group_by filter summarise' && await page.locator('.pipe-step.in-group').count() === 2,
+    'group_by: later steps are nested under it');
+  const pcode = await page.textContent('.pipe-result pre.code');
+  check(pcode.includes('group_by(group)') && pcode.includes('.groups = "drop"') && /3 rows × 5 columns/.test(await page.textContent('.pipe-result .out-head')),
+    'grouped summarise gives one row per group');
+
+  // --- plot-wide data and aesthetics ------------------------------------------------------------
+  await nav(graphName);
+  await settle();
+  const plotCode = () => page.evaluate(() => window.agrafeuse.engine.result(window.agrafeuse.store.selected)?.code || '');
+  check(/ggplot\(\w+, aes\(x = group, y = value\)\)/.test(await plotCode()), 'graph data and X / Y are plot-wide');
+  await page.selectOption('[data-k="base-colour"]', 'group');
+  await page.selectOption('[data-k="base-group"]', 'row_name');
+  await settle();
+  check(/ggplot\(\w+, aes\(x = group, y = value, colour = group, group = row_name\)\)/.test(await plotCode()), 'plot-wide colour and group go into ggplot()');
+  await page.click('[data-k="l0-aes-colour-mode:none"]');
+  await page.selectOption('[data-k="l0-aes-group-col"]', '__none');
+  await settle();
+  check(/stat_summary\(aes\(colour = NULL, group = NULL\)/.test(await plotCode()), 'a layer can switch plot-wide mappings off');
+  await page.waitForFunction(() => !document.querySelector('.preview-pane .stage.busy'), null, { timeout: 30000 }).catch(() => {});
+  check(await page.locator('.preview-status .message.error').count() === 0, 'graph with plot-wide mappings renders');
+
+  // --- the versions R and the packages run with are in the footer ---------------------------------
+  const versions = await page.textContent('.site-foot .versions');
+  check(/R \d+\.\d+\.\d+ \(your own R, through the bridge\)/.test(versions) && /ggplot2 \d/.test(versions) && /dplyr \d/.test(versions) && /emmeans \d/.test(versions),
+    `footer lists versions (${versions.slice(0, 90)}…)`);
+
   // --- code view ------------------------------------------------------------------------------------
   await page.click('.nav-item:has-text("Whole project as R code")');
   const script = await page.textContent('pre.code');

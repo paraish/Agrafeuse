@@ -79,6 +79,24 @@ newTransform(p, tooth.id, [
   { type: 'distinct', columns: ['supplement'], keep_all: true },
 ], 'Tooth more verbs');
 newTransform(p, tooth.id, [{ type: 'count', columns: ['supplement', 'dose'], sort: true }, { type: 'slice', mode: 'head', n: 3 }], 'Tooth counts');
+// Grouping: steps work within groups until ungroup or summarise; per-step "by" settings give way to it.
+newTransform(p, tooth.id, [
+  { type: 'group_by', columns: ['supplement', 'dose'] },
+  { type: 'mutate', name: 'pct', expr: 'length / mean(length) * 100' },
+  { type: 'filter', column: 'pct', op: '>', value: '90' },
+  { type: 'slice', mode: 'min', n: 2, column: 'pct', by: ['not a column'] },
+  { type: 'arrange', column: 'length', desc: true },
+  { type: 'summarise', column: 'length', stats: ['mean', 'n'], group_by: ['not a column'] },
+  { type: 'group_by', columns: ['supplement'] },
+  { type: 'count', columns: ['dose'] },
+], 'Tooth grouped (ends grouped)');
+newTransform(p, tooth.id, [
+  { type: 'group_by', columns: ['dose'] },
+  { type: 'distinct', columns: ['supplement'] },
+  { type: 'ungroup' },
+  { type: 'ungroup' },
+  { type: 'group_by', columns: [], disabled: true },
+], 'Tooth group then ungroup');
 newTransform(p, tooth.id, [
   { type: 'distinct', columns: [] },
   { type: 'slice', mode: 'tail', n: 4, by: ['dose'] },
@@ -154,6 +172,40 @@ newGraph(p, {
   y_scale: { trans: 'identity', from_zero: true, step: 0.25, format: 'pct100' },
   style: { y_title: { underline: true, bold: true }, x_title: { bold: false }, title: { align: 'right' } },
   theme: { name: 'lab', base_size: 14, x_angle: 90 },
+});
+
+// Plot-wide data and aesthetics, inherited by layers (and switched off in some).
+newGraph(p, {
+  name: 'Plot-wide: lines per mouse',
+  base: { dataset: rm.id, aes: { x: map('time'), y: map('Body weight'), group: map('mouse'), colour: map('genotype') } },
+  layers: [
+    { id: 'l1', geom: 'line', dataset: '', aes: { alpha: fx(0.5) } },
+    { id: 'l2', geom: 'point', dataset: '', aes: { size: fx(2), shape: map('genotype') } },
+    { id: 'l3', geom: 'mean_connect', dataset: '', aes: { group: { mode: 'none' }, linewidth: fx(1.4) }, params: geomDefaults('mean_connect') },
+    { id: 'l4', geom: 'errorbar', dataset: '', aes: { group: { mode: 'none' }, colour: { mode: 'none' } }, params: geomDefaults('errorbar') },
+    { id: 'l5', geom: 'hline', aes: { linetype: fx('dashed') }, params: { intercept: 20 } },
+  ],
+  palette: { name: 'okabe' },
+});
+newGraph(p, {
+  name: 'Plot-wide: distributions',
+  base: { dataset: plantLong.id, aes: { x: map('weight'), y: map('weight'), fill: map('group') } },
+  layers: [
+    { id: 'l1', geom: 'histogram', dataset: '', aes: { alpha: fx(0.6) }, params: { bins: 10, position: 'identity' } },
+    { id: 'l2', geom: 'density', dataset: '', aes: { fill: { mode: 'none' }, colour: map('group') }, params: geomDefaults('density') },
+  ],
+});
+newGraph(p, {
+  name: 'Plot-wide: mappings without data',
+  base: { dataset: '', aes: { x: map('group'), y: map('weight') } },
+  layers: [{ id: 'l1', geom: 'jitter', dataset: plantLong.id, aes: {}, params: geomDefaults('jitter') },
+    { id: 'l2', geom: 'smooth', dataset: dnase.id, aes: { x: map('concentration'), y: map('density') }, params: geomDefaults('smooth') }],
+});
+newGraph(p, {
+  name: 'Plot-wide: dodged groups',
+  base: { dataset: tooth.id, aes: { x: map('dose'), y: map('length'), fill: map('supplement'), group: map('supplement') } },
+  layers: ['mean_bar', 'errorbar', 'jitter'].map((geom, i) => ({ id: `l${i}`, geom, dataset: '', aes: {}, params: { ...geomDefaults(geom), dodge: true } })),
+  annotations: [],
 });
 
 // Schemas: data tables from JS, transforms unknown (null) like before R runs.

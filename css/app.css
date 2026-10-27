@@ -216,6 +216,15 @@ details.section[open] > summary::before { transform: rotate(45deg); }
 .aes-ctl > select { flex: 1; min-width: 120px; }
 .colour-pick { display: inline-flex; gap: 6px; align-items: center; }
 .layer .params { margin-top: 10px; padding-top: 8px; border-top: 1px dashed var(--border); }
+/* plot-wide data and aesthetics, inherited by the layers */
+.base-card { border-color: var(--accent-line); }
+.base-card .card-body > .hint { margin-top: 0; }
+.base-aes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 12px; }
+.base-cell { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.base-cell > label { font-size: 12px; font-weight: 600; color: var(--muted); }
+.base-cell .check { font-size: 12.5px; }
+.inherited { font-family: var(--mono); font-size: 12.5px; color: var(--accent); padding: 0 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.aes-ctl select.inherits { color: var(--accent); }
 .axis-block { margin: 10px 0 6px; }
 .axis-block h4 { font-size: 13px; margin-bottom: 6px; }
 .swatches { display: flex; flex-direction: column; gap: 6px; }
@@ -328,6 +337,12 @@ ol.pipe-steps:empty { padding: 4px 0; }
 .pipe-step.off .pipe-row { opacity: 0.55; }
 .pipe-step.off .pipe-verb { text-decoration: line-through; }
 .pipe-step.error { border-color: color-mix(in srgb, var(--danger) 45%, transparent); }
+/* steps after a group_by hang off it, indented, until ungroup or summarise */
+.pipe-step.in-group { margin-left: 18px; }
+.pipe-step.in-group::before { left: -32px; width: 30px; border-top-style: dotted; }
+.pipe-step.in-group::after { content: ""; position: absolute; left: -18px; top: -8px; bottom: -8px; border-left: 2px dotted var(--accent); }
+.group-tag { flex: none; font-size: 11px; font-weight: 600; color: var(--accent); background: var(--accent-weak); border-radius: 10px; padding: 1px 8px; margin-left: 6px; }
+.per-group { color: var(--accent); }
 .pipe-step.dragging { opacity: 0.4; }
 .pipe-step.drop-before { box-shadow: 0 -3px 0 var(--accent); }
 .pipe-step.drop-after { box-shadow: 0 3px 0 var(--accent); }
