@@ -221,7 +221,7 @@ export const STEP_TYPES = {
     label: 'Correlation matrix (every pair of number columns)',
     verb: 'correlate', short: 'r and P for every pair of number columns',
     brief: (s) => `${{ pearson: 'Pearson', spearman: 'Spearman', kendall: 'Kendall' }[s.method] || s.method} r of ${s.columns?.length ? s.columns.join(', ') : 'every number column'}`,
-    help: 'One row per pair of columns (both ways round, and each column with itself), with r, its 95% CI (Pearson), the P value and n: ready for a heatmap. Nothing ticked = every number column.',
+    help: 'One row per pair of columns (both ways round, and each column with itself), with r, its 95% CI (Pearson), the P value and n: ready for a heatmap. Untick any columns to leave them out.',
     defaults: () => ({ columns: [], method: 'pearson', adjust: 'none', triangle: 'full' }),
     code: (s) => {
       if ((s.columns || []).length === 1) throw new Error('Choose at least two columns (or none, for every number column).');

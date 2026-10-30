@@ -89,6 +89,11 @@ export class TransformView {
     const grouped = planSteps(it.steps, this.app.engine.schemaOf(it.input)).plan[i]?.grouped;
     const body = stepFields(step, i, {
       columns: (j) => this.columnsFor(j),
+      // Number columns: those of the input, and any made by earlier steps (their type is not known yet).
+      numbers: (j) => {
+        const input = this.app.engine.schemaOf(it.input)?.columns || [];
+        return this.columnsFor(j).filter(([n]) => { const c = input.find((x) => x.name === n); return !c || c.type === 'numeric'; });
+      },
       levels: (col) => this.levelsFor(col),
       changed: (structural) => this.changed(structural),
       engine: this.app.engine,

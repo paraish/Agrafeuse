@@ -3,7 +3,7 @@
 import { h, fill, rebuild, debounce, download, safeFilename } from './dom.js';
 import {
   field, select, bindSelect, bindInput, bindCheck, checkbox, colour, segmented, iconButton, button,
-  columnOptions, levelsOf, section, codeBlock, messageBox, input, toast, multiCheck,
+  columnOptions, levelsOf, section, codeBlock, messageBox, input, toast, columnPicker,
 } from './widgets.js';
 import { itemHeader, warningsBox } from './common.js';
 import {
@@ -242,7 +242,7 @@ export class GraphView {
       case 'colour': return h('div.param', h('label', p.label), colour(l.params[p.key] || p.def, (v) => { l.params[p.key] = v; ch(); }, { k }));
       case 'column': return h('div.param', h('label', p.label), bindSelect(l.params, p.key, columnOptions(schema()), redraw, { placeholder: '(none)', k }));
       case 'columns': return h('div.param.param-wide', h('label', p.label),
-        multiCheck(columnOptions(schema(), { types: ['numeric'] }), l.params[p.key], (v) => { l.params[p.key] = v; ch(); }, { k, empty: 'Choose the data first.' }));
+        columnPicker(columnOptions(schema(), { types: ['numeric'] }), l.params[p.key], (v) => { l.params[p.key] = v; ch(); }, { k, empty: 'Choose the data first.' }));
       case 'number': return h('div.param', h('label', p.label), bindInput(l.params, p.key, ch, { type: 'number', step: p.step, min: p.min, max: p.max, k, width: '80px', placeholder: p.def === '' ? 'auto' : undefined }));
       default: return h('div.param', h('label', p.label), bindInput(l.params, p.key, ch, { k, width: '80px' }));
     }

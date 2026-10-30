@@ -6,7 +6,7 @@
 //   ctx.engine           for checking typed R code
 //   ctx.scope(i)         the columns an earlier group_by groups step i by, or null
 import { h, fill, debounce } from './dom.js';
-import { field, select, bindSelect, bindInput, bindCheck, multiCheck, iconButton } from './widgets.js';
+import { field, select, bindSelect, bindInput, bindCheck, multiCheck, columnPicker, iconButton } from './widgets.js';
 import { MUTATE_PRESETS } from '../codegen/transform.js';
 
 const FILTER_OPS = [['==', 'equals'], ['!=', 'does not equal'], ['>', '>'], ['>=', '≥'], ['<', '<'], ['<=', '≤'],
@@ -135,7 +135,7 @@ export function stepFields(step, i, ctx) {
       ];
     case 'correlate':
       return [
-        field('Columns', multiCheck(cols, step.columns, (v) => { step.columns = v; ctx.changed(); }, { k: k('columns') }), { hint: 'Nothing ticked = every number column.' }),
+        field('Columns', columnPicker(ctx.numbers?.(i) || cols, step.columns, (v) => { step.columns = v; ctx.changed(); }, { k: k('columns') })),
         h('div.row2',
           field('Method', bindSelect(step, 'method', [['pearson', "Pearson's r"], ['spearman', "Spearman's rho"], ['kendall', "Kendall's tau"]], ch(), { k: k('method') })),
           field('Adjust P values', bindSelect(step, 'adjust', [['none', 'No'], ['holm', 'Holm'], ['bonferroni', 'Bonferroni'], ['fdr', 'False discovery rate']], ch(), { k: k('adjust') }))),

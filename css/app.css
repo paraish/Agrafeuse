@@ -217,6 +217,9 @@ details.section[open] > summary::before { transform: rotate(45deg); }
 .colour-pick { display: inline-flex; gap: 6px; align-items: center; }
 .layer .params { margin-top: 10px; padding-top: 8px; border-top: 1px dashed var(--border); }
 .param.param-wide { flex-direction: column; align-items: stretch; }
+.colpicker-bar { display: flex; align-items: center; gap: 10px; font-size: 12px; margin: 2px 0 4px; }
+.colpicker-bar .link { font-size: 12px; }
+.colpicker-out { color: var(--warn); }
 /* plot-wide data and aesthetics, inherited by the layers */
 .base-card { border-color: var(--accent-line); }
 .base-card .card-body > .hint { margin-top: 0; }

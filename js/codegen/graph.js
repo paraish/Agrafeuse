@@ -244,7 +244,7 @@ export const GEOMS = {
     label: 'Correlation heatmap (every pair of columns)', category: 'Correlation', helper: 'ag_cor_heatmap', fills: true,
     aes: [], required: [],
     params: [
-      { key: 'columns', label: 'Columns (none ticked = every number column)', type: 'columns', def: [] },
+      { key: 'columns', label: 'Columns', type: 'columns', def: [] },
       { key: 'method', label: 'Correlation', type: 'select', options: COR_METHODS, def: 'pearson' },
       { key: 'label', label: 'Text in each tile', type: 'select', options: COR_LABELS, def: 'r' },
       { key: 'adjust', label: 'Adjust P values for the number of pairs', type: 'select', options: COR_ADJUST, def: 'none', showIf: (p) => /p|stars/.test(p.label) },
@@ -269,7 +269,7 @@ export const GEOMS = {
     label: 'Scatterplot matrix (each pair of columns as an XY plot)', category: 'Correlation', helper: 'ag_scatter_matrix',
     aes: [], required: [],
     params: [
-      { key: 'columns', label: 'Columns (none ticked = every number column)', type: 'columns', def: [] },
+      { key: 'columns', label: 'Columns', type: 'columns', def: [] },
       { key: 'triangle', label: 'Pairs', type: 'select', options: [['lower', 'Each pair once (lower left)'], ['upper', 'Each pair once (upper right)'], ['both', 'Both ways round']], def: 'lower' },
       { key: 'point_size', label: 'Point size', type: 'number', def: 1.6, min: 0, max: 10, step: 0.2 },
       { key: 'colour_by', label: 'Colour points by (optional)', type: 'column', def: '' },

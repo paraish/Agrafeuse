@@ -78,6 +78,7 @@ export class PipePanel {
     const scopes = this.scopes();
     return {
       columns: (i) => (this.schemaAt(i)?.columns || []).map((c) => [c.name, c.name]),
+      numbers: (i) => (this.schemaAt(i)?.columns || []).filter((c) => c.type === 'numeric').map((c) => [c.name, c.name]),
       levels: (col, i) => levelsOf(this.schemaAt(i), col),
       scope: (i) => scopes[i],
       changed: (structural) => this.changed(structural),

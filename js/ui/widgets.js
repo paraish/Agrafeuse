@@ -1,5 +1,5 @@
 // Form controls bound to plain objects, plus modals, toasts and result tables.
-import { h, icon } from './dom.js';
+import { h, icon, fill } from './dom.js';
 
 let uid = 0;
 const nextId = () => `w${++uid}`;
@@ -90,6 +90,33 @@ export function multiCheck(options, selected, onChange, { k, empty = 'Nothing to
     if (on) set.add(v); else set.delete(v);
     onChange(options.map((o) => o[0]).filter((x) => set.has(x)));
   }, { k: k ? `${k}:${v}` : null })));
+}
+
+// Which columns to use: every one ticked to start with; untick those to leave
+// out. `selected` empty means every column (including ones added later), and
+// ticking them all again goes back to that. "None" clears the ticks so a few
+// can be picked; nothing is stored until at least one is ticked.
+export function columnPicker(options, selected, onChange, { k, empty = 'Nothing to choose from yet.' } = {}) {
+  if (!options.length) return h('div.hint', empty);
+  const all = options.map((o) => o[0]);
+  const box = h('div.colpicker');
+  const draw = (cur) => {
+    const left = all.filter((v) => !cur.includes(v));
+    fill(box,
+      h('div.colpicker-bar',
+        h('span', { class: left.length ? 'colpicker-out' : 'muted' },
+          !cur.length ? 'Tick the columns to use.' : left.length ? `Left out: ${left.join(', ')}` : `All ${all.length} columns (untick any to leave them out)`),
+        h('span.grow'),
+        h('button.link', { type: 'button', 'data-k': k ? `${k}-all` : null, onclick: () => pick(all) }, 'All'),
+        h('button.link', { type: 'button', 'data-k': k ? `${k}-none` : null, onclick: () => draw([]) }, 'None')),
+      multiCheck(options, cur, (v) => pick(v), { k }));
+  };
+  const pick = (cur) => {
+    draw(cur);
+    if (cur.length) onChange(cur.length === all.length ? [] : cur);
+  };
+  draw(selected?.length ? all.filter((v) => selected.includes(v)) : all);
+  return box;
 }
 
 export function iconButton(name, title, onclick, { k, cls = '', disabled } = {}) {

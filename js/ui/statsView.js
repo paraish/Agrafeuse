@@ -1,7 +1,7 @@
 // An analysis: choose a test and the data, read the results, put them on a graph.
 import { h, fill, rebuild, debounce, icon } from './dom.js';
 import {
-  field, select, bindSelect, bindInput, bindCheck, multiCheck, segmented, button, columnOptions,
+  field, select, bindSelect, bindInput, bindCheck, multiCheck, columnPicker, segmented, button, columnOptions,
   levelsOf, dataTable, section, codeBlock, messageBox, modal, toast,
 } from './widgets.js';
 import { itemHeader, warningsBox } from './common.js';
@@ -131,8 +131,7 @@ export class StatsView {
       return out;
     }
     if (t.inputs.numbers) {
-      out.push(field('Columns', multiCheck(nums, a.columns, (v) => { a.columns = v; this.changed(); }, { k: 'cols' }),
-        { hint: 'Nothing ticked = every number column.' }));
+      out.push(field('Columns', columnPicker(nums, a.columns, (v) => { a.columns = v; this.changed(); }, { k: 'cols' })));
     }
     if (t.inputs.x) out.push(field('X', bindSelect(a, 'x', nums, ch(), { placeholder: 'Choose a number column…', k: 'x' })));
     if (t.inputs.y) out.push(field(t.inputs.x ? 'Y' : 'Values (Y)', bindSelect(a, 'y', nums, ch(), { placeholder: 'Choose a number column…', k: 'y' })));

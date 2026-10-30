@@ -232,12 +232,23 @@ try {
   await page.waitForSelector('.summary');
   check(/Pearson's r between 3 columns \(3 pairs\)/.test(await page.textContent('.summary')) && await page.locator('.result-table h4:has-text("P values")').count() === 1,
     'correlation matrix of every number column');
+  await page.uncheck('[data-k="cols:Treatment 2"]');
+  await settle();
+  await page.waitForFunction(() => /between 2 columns/.test(document.querySelector('.summary')?.textContent || ''), null, { timeout: 20000 });
+  check((await page.textContent('.colpicker-bar')).includes('Left out: Treatment 2'), 'untick a column to leave it out of the matrix');
+  await page.click('[data-k="cols-all"]');
+  await settle();
+  await page.waitForFunction(() => /between 3 columns/.test(document.querySelector('.summary')?.textContent || ''), null, { timeout: 20000 });
+  check(true, '"All" brings every column back');
   await page.click('[data-k="to-heatmap"]');
   await settle();
   await page.waitForFunction(() => document.querySelector('img.plot')?.getAttribute('src'), null, { timeout: 30000 });
   const heatCode = () => page.evaluate(() => window.agrafeuse.engine.result(window.agrafeuse.store.selected)?.code || '');
-  check((await heatCode()).includes('ag_cor_heatmap(plant_growth, columns = c("Control", "Treatment 1", "Treatment 2"))') && (await heatCode()).includes('scale_fill_viridis_c(limits = c(-1, 1), oob = scales::squish)'),
+  check((await heatCode()).includes('ag_cor_heatmap(plant_growth)') && (await heatCode()).includes('scale_fill_viridis_c(limits = c(-1, 1), oob = scales::squish)'),
     `heatmap from the analysis: viridis, from -1 to 1 (${(await heatCode()).split('\n').slice(0, 4).join(' / ')})`);
+  await page.uncheck('[data-k="l0-p-columns:Control"]');
+  await settle();
+  check((await heatCode()).includes('ag_cor_heatmap(plant_growth, columns = c("Treatment 1", "Treatment 2"))'), 'leave a column out of the heatmap');
   await page.selectOption('[data-k="l0-p-label"]', 'r_p');
   await page.click('[data-k="fmt-tab-legend"]');
   await page.selectOption('[data-k="pal-option"]', 'magma');
