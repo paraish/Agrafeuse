@@ -89,6 +89,24 @@ try {
   await page.keyboard.press('Enter');
   check((await page.textContent('.sheet th[data-c="1"] .colname')) === 'Drug X', 'renamed a column from the header');
 
+  // Move columns: drag "Group C" by its grip to the front, then back with the button and the keyboard.
+  const heads = () => page.$$eval('.sheet th.colhead:not(.ghost):not(.rowname-head) .colname', (els) => els.map((e) => e.textContent).join(','));
+  const order0 = await heads();
+  await page.hover('.sheet th[data-c="2"]');
+  const colGrip = await page.locator('.sheet th[data-c="2"] .col-grip').boundingBox();
+  const front = await page.locator('.sheet th[data-c="0"]').boundingBox();
+  await page.mouse.move(colGrip.x + colGrip.width / 2, colGrip.y + colGrip.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(front.x + 8, front.y + 10, { steps: 6 });
+  await page.mouse.up();
+  check(await heads() === 'Group C,Control,Drug X' && (await page.textContent('.sheet td[data-r="3"][data-c="0"]')) === '19',
+    `drag a column by its grip to move it, values and all (${await heads()})`);
+  await page.click('[data-k="col-right"]');
+  check(await heads() === 'Control,Group C,Drug X', 'move the selected column right with the button');
+  await page.focus('.grid');
+  await page.keyboard.press('Control+Shift+ArrowRight');
+  check(await heads() === order0, `and with Ctrl+Shift+arrow (${await heads()})`);
+
   // --- wide → long -------------------------------------------------------------------------
   await page.click('button:has-text("Wide → long")');
   await settle();
@@ -175,6 +193,37 @@ try {
     await page.waitForSelector('.summary, .message.error');
     check(await page.locator('.output .message.error').count() === 0, `switch test to ${test}`);
   }
+
+  // --- correlation matrix, its heatmap, and a scatterplot matrix --------------------------------
+  await page.click('.nav-item:has(.name:text-is("Plant growth"))');
+  await page.click('[data-k="new-analysis"]');
+  await page.click('.test-list button.choice:has-text("Correlation matrix")');
+  await settle();
+  await page.waitForSelector('.summary');
+  check(/Pearson's r between 3 columns \(3 pairs\)/.test(await page.textContent('.summary')) && await page.locator('.result-table h4:has-text("P values")').count() === 1,
+    'correlation matrix of every number column');
+  await page.click('[data-k="to-heatmap"]');
+  await settle();
+  await page.waitForFunction(() => document.querySelector('img.plot')?.getAttribute('src'), null, { timeout: 30000 });
+  const heatCode = () => page.evaluate(() => window.agrafeuse.engine.result(window.agrafeuse.store.selected)?.code || '');
+  check((await heatCode()).includes('ag_cor_heatmap(plant_growth, columns = c("Control", "Treatment 1", "Treatment 2"))') && (await heatCode()).includes('scale_fill_viridis_c(limits = c(-1, 1), oob = scales::squish)'),
+    `heatmap from the analysis: viridis, from -1 to 1 (${(await heatCode()).split('\n').slice(0, 4).join(' / ')})`);
+  await page.selectOption('[data-k="l0-p-label"]', 'r_p');
+  await page.click('[data-k="fmt-tab-legend"]');
+  await page.selectOption('[data-k="pal-option"]', 'magma');
+  await settle();
+  check((await heatCode()).includes('label = "r_p"') && (await heatCode()).includes('option = "magma"') && await page.locator('.preview-status .message.error').count() === 0,
+    'heatmap text with "p =" and another colour scheme');
+  await page.click('[data-k="new-graph"]');
+  await page.click('[data-k="tpl-scatter_matrix"]');
+  await page.click('[data-k="create-graph"]');
+  await settle();
+  await page.uncheck('[data-k="l0-p-intercept"]');
+  await page.selectOption('[data-k="l0-p-line_type"]', 'dashed');
+  await settle();
+  const smCode = await heatCode();
+  check(smCode.includes('ag_scatter_matrix(plant_growth, intercept = FALSE, line_type = "dashed")') && await page.locator('.preview-status .message.error').count() === 0,
+    'scatterplot matrix with a dashed line through the origin');
 
   // --- dplyr pipeline stapled to a data table ------------------------------------------------------
   await page.click('.nav-item:has(.name:text-is("Plant growth"))');

@@ -10,6 +10,7 @@ import { getItem, newDataTable, newTransform, newAnalysis, newGraph, itemCode, t
 import { dataSchema } from '../js/codegen/data.js';
 import { testDefaults, usesMixedModel } from '../js/codegen/stats.js';
 import { GEOMS, geomDefaults, PALETTES } from '../js/codegen/graph.js';
+import { graphFromTemplate } from '../js/ui/templates.js';
 
 const p = exampleProject();
 addFixtures(p);
@@ -37,6 +38,28 @@ for (const t of ['descriptive', 'normality', 'ttest_unpaired', 'ttest_paired', '
   add(t, plant, wideOpts(t));
 }
 add('one_sample', plant, { layout: 'columns', columns: ['Control'] }, { mu: 5 });
+// Correlation matrices: every number column, some columns, other methods.
+add('cormatrix', plant, { columns: [] });
+add('cormatrix', dnase, { columns: ['concentration', 'density'] }, { method: 'spearman', adjust: 'holm' });
+add('cormatrix', plant, { columns: ['Treatment 2', 'Control', 'Treatment 1'] }, { method: 'kendall', adjust: 'fdr' });
+newTransform(p, plant.id, [{ type: 'correlate', columns: [] }], 'Plant correlations');
+newTransform(p, plant.id, [{ type: 'correlate', columns: ['Control', 'Treatment 2'], method: 'spearman', adjust: 'holm', triangle: 'half' }, { type: 'filter', column: 'r', op: '<', value: '1' }], 'Plant correlations half');
+graphFromTemplate(p, 'cor_heatmap', { dataset: plant.id, name: 'Plant heatmap' });
+graphFromTemplate(p, 'cor_heatmap', { dataset: dnase.id, method: 'spearman', name: 'DNase heatmap' });
+graphFromTemplate(p, 'scatter_matrix', { dataset: plant.id, name: 'Plant scatter matrix' });
+// Heatmap and scatterplot matrix settings, and continuous colour schemes with ranges.
+const corLayer = (geom, ds, params) => ({ id: 'l1', geom, dataset: ds.id, aes: {}, params: { ...geomDefaults(geom), ...params } });
+const wideNums = newDataTable(p, { name: 'Four measures', columns: ['a', 'b', 'c', 'group'].map((name) => ({ name, type: name === 'group' ? 'text' : 'auto' })),
+  rows: Array.from({ length: 12 }, (_, i) => [String(i + 1), String((i * 7) % 11 + 0.5 * i), String(20 - i + (i % 3)), i % 2 ? 'x' : 'y']) });
+for (const [label, triangle, palette] of [['r_stars', 'lower', { name: 'viridis', option: 'magma', reverse: true, min: -1, max: 1 }], ['r_p', 'upper', { name: 'correlation' }],
+  ['r_pnum', 'full', { name: 'gradient', low: '#ffffff', high: '#000000', min: 0 }], ['stars', 'full', { name: 'gradient2', midpoint: 0.2 }], ['p', 'full', { name: 'diverging', reverse: true }],
+  ['pnum', 'full', { name: 'grey' }], ['none', 'full', { name: 'default', max: 1 }]]) {
+  newGraph(p, { name: `Heatmap ${label} ${palette.name}`, layers: [corLayer('cor_heatmap', wideNums, { label, triangle, adjust: label === 'r_p' ? 'holm' : 'none', columns: label === 'p' ? ['a', 'c'] : [], text_colour: label === 'pnum' ? 'white' : 'auto', digits: 3 })], palette, labels: { legend: 'Correlation' } });
+}
+newGraph(p, { name: 'Scatter matrix styled', layers: [corLayer('scatter_matrix', wideNums, { colour_by: 'group', line_type: 'dotted', line_width: 1.4, line_colour: '#d62728', intercept: false, se: true, label: 'r_stars', position: 'bottom-right', triangle: 'both', method: 'spearman' })], palette: { name: 'okabe' } });
+newGraph(p, { name: 'Scatter matrix plain', layers: [corLayer('scatter_matrix', dnase, { line: 'none', label: 'none', point_colour: '#1f77b4' })] });
+newGraph(p, { name: 'Scatter matrix loess', layers: [corLayer('scatter_matrix', plant, { line: 'loess', label: 'p', columns: ['Control', 'Treatment 1'] })] });
+newGraph(p, { name: 'Continuous colour with range', layers: [{ id: 'l1', geom: 'point', dataset: dnase.id, aes: { x: { mode: 'col', col: 'concentration' }, y: { mode: 'col', col: 'density' }, colour: { mode: 'col', col: 'density' } } }], palette: { name: 'viridis', option: 'turbo', min: 0.2, max: '' } });
 add('one_sample', plantLong, { layout: 'long', y: 'weight', group: 'group', oneLevel: 'Treatment 2' }, { mu: 5, kind: 'wilcoxon' });
 for (const t of ['descriptive', 'ttest_unpaired', 'mann_whitney', 'anova1', 'welch_anova', 'kruskal']) add(t, plantLong, longOpts());
 add('anova1', plantLong, longOpts(), { compare: 'control', control: 'Control', correction: 'dunnettx' });
@@ -111,6 +134,7 @@ for (const [key, g] of Object.entries(GEOMS)) {
   let layer;
   if (g.noData && !g.custom) layer = { geom: key, aes: { colour: fx('#ff0000'), linetype: fx('dashed') }, params: geomDefaults(key) };
   else if (g.custom) layer = { geom: key, code: 'annotate("text", x = 1, y = 7, label = "custom")' };
+  else if (g.helper) layer = { geom: key, dataset: plant.id, aes: {}, params: geomDefaults(key) }; // needs several number columns
   else if (['histogram', 'density', 'bar_count'].includes(key)) layer = { geom: key, dataset: plantLong.id, aes: { x: map(key === 'bar_count' ? 'group' : 'weight'), fill: map('group'), alpha: fx(0.6) }, params: geomDefaults(key) };
   else if (key === 'errorbar_cols') layer = { geom: key, dataset: trSum.id, aes: { x: map('dose'), ymin: map('mean'), ymax: map('max'), colour: map('supplement') }, params: { ...geomDefaults(key), dodge: true } };
   else if (key === 'text') layer = { geom: key, dataset: plantLong.id, aes: { x: map('group'), y: map('weight'), label: map('weight') }, params: { nudge_y: 0.1 } };

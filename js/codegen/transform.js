@@ -217,6 +217,22 @@ export const STEP_TYPES = {
     defaults: () => ({ columns: [], sort: false }),
     code: (s) => [`count(${[...(s.columns || []).map(rsym), s.sort ? 'sort = TRUE' : null].filter(Boolean).join(', ')})`],
   },
+  correlate: {
+    label: 'Correlation matrix (every pair of number columns)',
+    verb: 'correlate', short: 'r and P for every pair of number columns',
+    brief: (s) => `${{ pearson: 'Pearson', spearman: 'Spearman', kendall: 'Kendall' }[s.method] || s.method} r of ${s.columns?.length ? s.columns.join(', ') : 'every number column'}`,
+    help: 'One row per pair of columns (both ways round, and each column with itself), with r, its 95% CI (Pearson), the P value and n: ready for a heatmap. Nothing ticked = every number column.',
+    defaults: () => ({ columns: [], method: 'pearson', adjust: 'none', triangle: 'full' }),
+    code: (s) => {
+      if ((s.columns || []).length === 1) throw new Error('Choose at least two columns (or none, for every number column).');
+      const a = [];
+      if (s.columns?.length) a.push(`columns = ${rvec(s.columns.map(rstr), '    ')}`);
+      if (s.method && s.method !== 'pearson') a.push(`method = ${rstr(s.method)}`);
+      if (s.adjust && s.adjust !== 'none') a.push(`adjust = ${rstr(s.adjust)}`);
+      if (s.triangle === 'half') a.push('triangle = "half"');
+      return [`ag_correlate(${a.join(', ')})`];
+    },
+  },
   group_by: {
     label: 'Group rows (group_by)',
     verb: 'group_by', short: 'Do the next steps for each group',
@@ -243,7 +259,7 @@ export const STEP_GROUPS = [
   ['Groups', ['group_by', 'ungroup']],
   ['Rows', ['filter', 'arrange', 'slice', 'distinct', 'drop_na']],
   ['Columns', ['select', 'mutate', 'rename', 'convert', 'reorder']],
-  ['Summarise and reshape', ['summarise', 'count', 'pivot_longer', 'pivot_wider', 'transpose']],
+  ['Summarise and reshape', ['summarise', 'count', 'correlate', 'pivot_longer', 'pivot_wider', 'transpose']],
 ];
 
 export const MUTATE_PRESETS = [

@@ -1,7 +1,7 @@
 // Ready-made starting points for new graphs. Each one is just a set of layers,
 // which the user can then change or add to.
 import { newGraph } from '../model.js';
-import { ensureBase } from '../codegen/graph.js';
+import { ensureBase, geomDefaults } from '../codegen/graph.js';
 
 const map = (c) => (c ? { mode: 'col', col: c } : undefined);
 const fixed = (v) => ({ mode: 'const', value: v });
@@ -19,6 +19,8 @@ const T = {
   line: '<path d="M8 40h40M8 40V6"/><path d="M12 32 22 24 32 20 44 12"/><path d="M12 36 22 32 32 30 44 26" stroke-dasharray="3 2"/><path d="M22 21v6M32 17v6M44 9v6M22 29v6M32 27v6"/>',
   hist: '<path d="M8 40h40M8 40V6"/><path d="M11 40V32h5v-10h5v-8h5v6h5v10h5v6h5v4"/>',
   blank: '<path d="M8 40h40M8 40V6"/><path d="M28 16v14M21 23h14"/>',
+  pairs: '<path d="M8 40h40M8 40V6"/><rect x="10" y="7" width="11" height="10"/><rect x="10" y="19" width="11" height="10"/><rect x="23" y="19" width="11" height="10"/><rect x="10" y="31" width="11" height="8"/><rect x="23" y="31" width="11" height="8"/><rect x="36" y="31" width="11" height="8"/><path d="M11 16l9-8M11 28l9-8M24 28l9-8M11 38l9-6M24 38l9-6M37 38l9-6" stroke-dasharray="2 1.5"/>',
+  heat: '<g stroke="none" fill="currentColor"><rect x="10" y="6" width="10" height="10" fill-opacity=".9"/><rect x="21" y="6" width="10" height="10" fill-opacity=".25"/><rect x="32" y="6" width="10" height="10" fill-opacity=".55"/><rect x="10" y="17" width="10" height="10" fill-opacity=".25"/><rect x="21" y="17" width="10" height="10" fill-opacity=".9"/><rect x="32" y="17" width="10" height="10" fill-opacity=".1"/><rect x="10" y="28" width="10" height="10" fill-opacity=".55"/><rect x="21" y="28" width="10" height="10" fill-opacity=".1"/><rect x="32" y="28" width="10" height="10" fill-opacity=".9"/></g>',
 };
 
 export const GRAPH_TEMPLATES = [
@@ -30,6 +32,8 @@ export const GRAPH_TEMPLATES = [
   { key: 'xy', label: 'XY scatter with a line', desc: 'Two measurements, with a fitted straight line', thumb: T.xy, needs: ['x', 'y'], numericX: true },
   { key: 'time_course', label: 'Lines over time', desc: 'Mean ± SEM at each X, one line per group', thumb: T.line, needs: ['x', 'y'], optional: ['group'] },
   { key: 'histogram', label: 'Histogram', desc: 'How one measurement is distributed', thumb: T.hist, needs: ['y'] },
+  { key: 'cor_heatmap', label: 'Correlation heatmap', desc: 'Every number column against every other, coloured by r', thumb: T.heat, needs: [] },
+  { key: 'scatter_matrix', label: 'Scatterplot matrix', desc: 'Each pair of number columns as an XY plot, with r', thumb: T.pairs, needs: [] },
   { key: 'blank', label: 'Blank', desc: 'Start empty and add layers yourself', thumb: T.blank, needs: [] },
 ];
 
@@ -37,7 +41,7 @@ export function thumb(t) {
   return `<svg viewBox="0 0 54 46" width="54" height="46" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">${t.thumb}</svg>`;
 }
 
-export function graphFromTemplate(project, key, { dataset, x, y, group, name }) {
+export function graphFromTemplate(project, key, { dataset, x, y, group, name, columns, method, adjust }) {
   const g = { name };
   const ax = { x: map(x), y: map(y) };
   const col = group ? map(group) : map(x);
@@ -107,10 +111,24 @@ export function graphFromTemplate(project, key, { dataset, x, y, group, name }) 
       g.layers = [L('histogram', dataset, { x: map(y), fill: fixed('#9ecae1'), colour: fixed('#ffffff') }, { bins: 20 })];
       g.y_scale = { trans: 'identity', min: '', max: '', from_zero: true };
       break;
+    case 'cor_heatmap':
+      // One layer draws every pair; its settings (columns, text, triangle…) are in the layer card.
+      g.layers = [L('cor_heatmap', dataset, {}, { ...geomDefaults('cor_heatmap'), columns: columns || [], method: method || 'pearson', adjust: adjust || 'none' })];
+      g.palette = { name: 'viridis', manual: {}, min: -1, max: 1 };
+      g.theme = { name: 'minimal', base_size: 13, legend: 'right' };
+      g.style = { x_text: { angle: 45 } };
+      // Bigger for many columns (when they are known).
+      g.size = (columns || []).length > 5 ? { width: Math.min(12, 2.5 + 0.5 * columns.length), height: Math.min(11, 1.8 + 0.5 * columns.length), dpi: 300 } : { width: 5.5, height: 4.6, dpi: 300 };
+      break;
+    case 'scatter_matrix':
+      g.layers = [L('scatter_matrix', dataset, {}, { ...geomDefaults('scatter_matrix'), columns: columns || [], method: method || 'pearson' })];
+      g.theme = { name: 'bw', base_size: 11, legend: 'right' };
+      g.size = (columns || []).length > 4 ? { width: Math.min(14, 1.6 * columns.length), height: Math.min(13, 1.5 * columns.length), dpi: 300 } : { width: 6.5, height: 6, dpi: 300 };
+      break;
     default:
       g.layers = [];
   }
-  g.labels = { title: '', x: '', y: '', legend: '' };
+  g.labels = key === 'cor_heatmap' ? { title: '', x: '', y: '', legend: 'r', hide_x: true, hide_y: true } : { title: '', x: '', y: '', legend: '' };
   if (['scatter_dot', 'bar_points', 'box', 'violin'].includes(key)) g.labels.hide_x = false;
   g.layers = (g.layers || []).map((l) => ({ ...l, aes: Object.fromEntries(Object.entries(l.aes).filter(([, v]) => v)) }));
   // What the layers share (data, X, Y…) becomes plot-wide, for every layer to inherit.

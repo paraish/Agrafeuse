@@ -751,6 +751,238 @@ ag_result_cor <- function(test, d, x, y, method) {
             label = sprintf("%s = %s, %s", sym, ag_short(est), ag_p_label(p, "p")), model = test)
 }
 
+# Correlation matrices ----------------------------------------------------------------
+
+# Every pair of the chosen number columns (all number columns when none are
+# given), each pair once: r, its 95% CI (Pearson), P value, the P value
+# adjusted for the number of pairs (p.adjust), and n. Each pair uses the rows
+# where both columns have values.
+ag_cor_pairs <- function(df, columns = NULL, method = "pearson", adjust = "none") {
+  df <- as.data.frame(df, check.names = FALSE)
+  if (!length(columns)) columns <- names(df)[vapply(df, is.numeric, logical(1))]
+  miss <- setdiff(columns, names(df))
+  if (length(miss)) stop("No column ", paste0("'", miss, "'", collapse = ", "), " in the data.")
+  notnum <- columns[!vapply(df[columns], is.numeric, logical(1))]
+  if (length(notnum)) stop("Correlations need number columns; not numbers: ", paste(notnum, collapse = ", "), ".")
+  if (length(columns) < 2) stop("A correlation matrix needs at least two number columns.")
+  idx <- utils::combn(length(columns), 2)
+  rows <- lapply(seq_len(ncol(idx)), function(j) {
+    a <- columns[idx[1, j]]; b <- columns[idx[2, j]]
+    ok <- stats::complete.cases(df[[a]], df[[b]])
+    out <- data.frame(column1 = a, column2 = b, r = NA_real_, lower = NA_real_, upper = NA_real_,
+                      p = NA_real_, n = sum(ok), stringsAsFactors = FALSE)
+    if (out$n >= 3) {
+      t <- tryCatch(suppressWarnings(stats::cor.test(df[[a]][ok], df[[b]][ok], method = method,
+                                                     exact = if (method == "pearson") NULL else FALSE)),
+                    error = function(e) NULL)
+      if (!is.null(t)) {
+        out$r <- unname(t$estimate); out$p <- t$p.value
+        if (!is.null(t$conf.int)) { out$lower <- t$conf.int[1]; out$upper <- t$conf.int[2] }
+      }
+    }
+    out
+  })
+  out <- do.call(rbind, rows)
+  out$p_adjusted <- stats::p.adjust(out$p, method = adjust)
+  attr(out, "columns") <- columns
+  out
+}
+
+# A correlation matrix as a long table, ready for a heatmap: one row per pair of
+# columns, both ways round, and each column with itself (triangle = "full"), or
+# each pair once ("half"). column1 runs left to right and column2 top to bottom
+# in the order the columns were given. label is r to 2 decimals, label_stars
+# adds significance stars (adjusted P < 0.05). Use it in a pipe: df |> ag_correlate().
+ag_correlate <- function(.data, columns = NULL, method = "pearson", adjust = "none", triangle = "full") {
+  half <- ag_cor_pairs(.data, columns, method, adjust)
+  lv <- attr(half, "columns")
+  d <- as.data.frame(.data, check.names = FALSE)
+  self <- data.frame(column1 = lv, column2 = lv, r = 1, lower = NA_real_, upper = NA_real_, p = NA_real_,
+                     n = vapply(lv, function(v) sum(!is.na(d[[v]])), integer(1)), p_adjusted = NA_real_,
+                     stringsAsFactors = FALSE)
+  other <- half
+  other$column1 <- half$column2; other$column2 <- half$column1
+  out <- if (identical(triangle, "half")) rbind(half, self) else rbind(half, other, self)
+  out$column1 <- factor(out$column1, levels = lv)
+  out$column2 <- factor(out$column2, levels = rev(lv))
+  out <- out[order(as.integer(out$column1), -as.integer(out$column2)), , drop = FALSE]
+  out$label <- ifelse(is.na(out$r), "", sprintf("%.2f", out$r))
+  sig <- !is.na(out$p_adjusted) & out$p_adjusted < 0.05
+  out$label_stars <- paste0(out$label, ifelse(sig, ag_stars(out$p_adjusted), ""))
+  rownames(out) <- NULL
+  out
+}
+
+# Text for a correlation: r with stars or its P value ("p = 0.012" or just
+# "0.012"), stars or the P value alone, or nothing. format: "r", "r_stars",
+# "r_p", "r_pnum", "stars", "p", "pnum" or "none".
+ag_cor_label <- function(r, p, format = "r", digits = 2) {
+  rr <- ifelse(is.na(r), "", formatC(r, digits = digits, format = "f"))
+  has_p <- !is.na(p)
+  pnum <- ifelse(has_p, ag_fmt_p(p), "")
+  ptxt <- ifelse(has_p, ag_p_text(p), "")
+  stars <- ifelse(has_p & p < 0.05, ag_stars(p), "")
+  switch(format,
+    r = rr,
+    r_stars = paste0(rr, stars),
+    r_p = ifelse(has_p, paste0(rr, "\n", ptxt), rr),
+    r_pnum = ifelse(has_p, paste0(rr, "\n", pnum), rr),
+    stars = stars,
+    p = ptxt,
+    pnum = pnum,
+    rep("", length(r)))
+}
+
+# A correlation heatmap, as layers to add to a ggplot: one tile per pair of
+# columns, filled by r, with r (and its P value or stars) written in. The fill
+# scale is the plot's own (scale_fill_viridis_c() and others). triangle:
+# "full", "lower" or "upper". text_colour "auto" writes white on dark tiles:
+# dark = "low" (e.g. viridis, dark for low r), "both" (dark at both ends,
+# e.g. blue-red) or "none"; limits = the colour scale's range.
+ag_cor_heatmap <- function(data, columns = NULL, method = "pearson", adjust = "none", triangle = "full",
+                           label = "r", digits = 2, text_size = NULL, text_colour = "auto",
+                           dark = "low", limits = c(-1, 1), border = "white") {
+  d <- ag_correlate(data, columns, method, adjust, triangle = if (triangle == "full") "full" else "half")
+  # Text that fits the tiles: smaller with more columns, and with two lines.
+  if (is.null(text_size) || is.na(text_size)) {
+    k <- nlevels(d$column1)
+    text_size <- max(1.8, min(4, 30 / k)) * if (label %in% c("r_p", "r_pnum")) 0.85 else 1
+  }
+  if (triangle == "upper") {
+    off <- as.character(d$column1) != as.character(d$column2)
+    lv <- levels(d$column1)
+    a <- as.character(d$column1); b <- as.character(d$column2)
+    d$column1 <- factor(ifelse(off, b, a), levels = lv)
+    d$column2 <- factor(ifelse(off, a, b), levels = rev(lv))
+  }
+  p <- if (adjust != "none") d$p_adjusted else d$p
+  d$text <- ag_cor_label(d$r, p, label, digits)
+  if (identical(text_colour, "auto")) {
+    lo <- limits[1]; hi <- limits[2]
+    t <- pmin(1, pmax(0, (d$r - lo) / (hi - lo)))
+    on_dark <- switch(dark, low = t < 0.5, high = t > 0.5, both = abs(t - 0.5) > 0.35, rep(FALSE, nrow(d)))
+    d$text_colour <- ifelse(!is.na(on_dark) & on_dark, "white", "black")
+  } else d$text_colour <- text_colour
+  sym <- switch(method, pearson = "r", spearman = "rho", kendall = "tau")
+  out <- list(ggplot2::geom_tile(data = d, ggplot2::aes(x = column1, y = column2, fill = r),
+                                 colour = border, inherit.aes = FALSE))
+  if (label != "none") {
+    out <- c(out, list(ggplot2::geom_text(data = d, ggplot2::aes(x = column1, y = column2, label = text, colour = I(text_colour)),
+                                          size = text_size, lineheight = 0.9, inherit.aes = FALSE)))
+  }
+  c(out, list(ggplot2::labs(x = NULL, y = NULL, fill = sym)))
+}
+
+# Every pair of the chosen number columns as x and y, one block of rows per
+# pair (x_column, y_column), for a scatterplot matrix. Other columns (groups,
+# IDs) come along. triangle: "lower" (each pair once), "upper", or "both".
+ag_pairs_long <- function(.data, columns = NULL, triangle = "lower") {
+  d <- as.data.frame(.data, check.names = FALSE)
+  if (!length(columns)) columns <- names(d)[vapply(d, is.numeric, logical(1))]
+  miss <- setdiff(columns, names(d))
+  if (length(miss)) stop("No column ", paste0("'", miss, "'", collapse = ", "), " in the data.")
+  if (length(columns) < 2) stop("A scatterplot matrix needs at least two number columns.")
+  keep <- setdiff(names(d), c(columns, "x", "y", "x_column", "y_column"))
+  idx <- expand.grid(i = seq_along(columns), j = seq_along(columns))
+  idx <- switch(triangle, upper = idx[idx$j < idx$i, ], both = idx[idx$i != idx$j, ], idx[idx$j > idx$i, ])
+  out <- do.call(rbind, lapply(seq_len(nrow(idx)), function(k) {
+    a <- columns[idx$i[k]]; b <- columns[idx$j[k]]
+    cbind(d[keep], data.frame(x_column = a, y_column = b, x = d[[a]], y = d[[b]], stringsAsFactors = FALSE))
+  }))
+  out$x_column <- factor(out$x_column, levels = columns)
+  out$y_column <- factor(out$y_column, levels = columns)
+  out
+}
+
+# A scatterplot matrix, as layers to add to a ggplot: each pair of columns in
+# its own panel, with an optional regression line (straight, with or without
+# an intercept, or a smoother) and r with its P value or stars in a corner.
+ag_scatter_matrix <- function(data, columns = NULL, triangle = "lower", method = "pearson", adjust = "none",
+                              point_size = 1.6, point_colour = "black", alpha = 0.8, colour_by = NULL,
+                              line = "lm", intercept = TRUE, se = FALSE, line_colour = "#0072B2",
+                              line_type = "solid", line_width = 0.8,
+                              label = "r_p", digits = 2, label_size = 3.4, position = "top-left") {
+  long <- ag_pairs_long(data, columns, triangle)
+  pts <- if (length(colour_by) && nzchar(colour_by)) {
+    if (!colour_by %in% names(long)) stop("Colour by: no column '", colour_by, "'.")
+    ggplot2::geom_point(data = long, ggplot2::aes(x = x, y = y, colour = .data[[colour_by]]),
+                        size = point_size, alpha = alpha, inherit.aes = FALSE)
+  } else {
+    ggplot2::geom_point(data = long, ggplot2::aes(x = x, y = y), size = point_size, colour = point_colour,
+                        alpha = alpha, inherit.aes = FALSE)
+  }
+  out <- list(pts)
+  if (line != "none") {
+    fml <- if (line == "lm" && !isTRUE(intercept)) y ~ x - 1 else y ~ x
+    out <- c(out, list(ggplot2::geom_smooth(data = long, ggplot2::aes(x = x, y = y),
+      method = if (line == "loess") "loess" else "lm", formula = fml, se = se,
+      colour = line_colour, linetype = line_type, linewidth = line_width, inherit.aes = FALSE)))
+  }
+  out <- c(out, list(ggplot2::facet_grid(rows = ggplot2::vars(y_column), cols = ggplot2::vars(x_column),
+                                         scales = "free", switch = "both"),
+                     ggplot2::labs(x = NULL, y = NULL),
+                     ggplot2::theme(strip.placement = "outside", strip.background = ggplot2::element_blank())))
+  if (label != "none") {
+    pairs <- unique(long[c("x_column", "y_column")])
+    stats <- do.call(rbind, lapply(seq_len(nrow(pairs)), function(k) {
+      sub <- long[long$x_column == pairs$x_column[k] & long$y_column == pairs$y_column[k], ]
+      ok <- stats::complete.cases(sub$x, sub$y)
+      t <- if (sum(ok) >= 3) tryCatch(suppressWarnings(stats::cor.test(sub$x[ok], sub$y[ok], method = method,
+                                                                      exact = if (method == "pearson") NULL else FALSE)), error = function(e) NULL)
+      data.frame(r = if (is.null(t)) NA_real_ else unname(t$estimate), p = if (is.null(t)) NA_real_ else t$p.value)
+    }))
+    p <- stats::p.adjust(stats$p, method = adjust)
+    sym <- switch(method, pearson = "r", spearman = "rho", kendall = "tau")
+    text <- ag_cor_label(stats$r, p, label, digits)
+    if (label %in% c("r", "r_stars", "r_p", "r_pnum")) text <- paste0(sym, " = ", text)
+    lab <- cbind(pairs, text = text)
+    left <- grepl("left", position); top <- grepl("top", position)
+    out <- c(out, list(ggplot2::geom_text(data = lab, ggplot2::aes(label = text),
+      x = if (left) -Inf else Inf, y = if (top) Inf else -Inf,
+      hjust = if (left) -0.08 else 1.08, vjust = if (top) 1.25 else -0.4,
+      size = label_size, lineheight = 0.9, inherit.aes = FALSE)))
+  }
+  out
+}
+
+# The correlation matrix as an analysis result: the r and P value matrices and
+# a table of every pair.
+ag_result_cormatrix <- function(d, columns = NULL, method = "pearson", adjust = "none") {
+  pairs <- ag_cor_pairs(d, columns, method, adjust)
+  lv <- attr(pairs, "columns"); k <- length(lv)
+  i <- match(pairs$column1, lv); j <- match(pairs$column2, lv)
+  square <- function(v, diagonal) {
+    m <- matrix(diagonal, k, k, dimnames = list(lv, lv))
+    m[cbind(i, j)] <- v; m[cbind(j, i)] <- v
+    m
+  }
+  as_table <- function(m) data.frame(Column = lv, as.data.frame(m, check.names = FALSE), check.names = FALSE, row.names = NULL)
+  sym <- switch(method, pearson = "r", spearman = "rho", kendall = "tau")
+  name <- switch(method, pearson = "Pearson's r", spearman = "Spearman's rho", kendall = "Kendall's tau")
+  padj <- adjust != "none"
+  pv <- if (padj) pairs$p_adjusted else pairs$p
+  pmat <- square(ag_fmt_p(pv), "")
+  pmat[is.na(square(pv, NA))] <- ""
+  diag(pmat) <- ""
+  tab <- data.frame(`Column 1` = pairs$column1, `Column 2` = pairs$column2, check.names = FALSE)
+  tab[[sym]] <- pairs$r
+  if (method == "pearson") { tab[["Lower 95% CI"]] <- pairs$lower; tab[["Upper 95% CI"]] <- pairs$upper }
+  tab[["P value"]] <- pairs$p
+  if (padj) tab[["Adjusted P value"]] <- pairs$p_adjusted
+  tab[["N"]] <- pairs$n
+  tab[["Significance"]] <- ag_stars(pv)
+  best <- which.max(abs(pairs$r))
+  summary <- sprintf("%s between %d columns (%d pairs).", name, k, nrow(pairs))
+  if (length(best)) summary <- paste0(summary, sprintf(" Strongest: %s and %s, %s = %s, %s.", pairs$column1[best], pairs$column2[best],
+                                                       sym, ag_short(pairs$r[best]), ag_p_text(pv[best])))
+  notes <- "Each pair uses the rows where both columns have values."
+  if (padj) notes <- c(notes, sprintf("P values adjusted for the %d pairs (%s).", nrow(pairs), adjust))
+  ag_result("Correlation matrix", summary,
+            tables = list(`Correlation coefficients` = as_table(square(pairs$r, 1)),
+                          `P values` = as_table(pmat), Pairs = tab),
+            notes = notes, model = pairs)
+}
+
 # Regression ------------------------------------------------------------------------
 
 ag_curve_grid <- function(xs, log_spaced = FALSE, n = 200) {

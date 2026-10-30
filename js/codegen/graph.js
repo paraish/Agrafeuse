@@ -39,6 +39,10 @@ export const ERROR_TYPES = [
 const errorFun = (k) => (ERROR_TYPES.find((e) => e[0] === k) || ERROR_TYPES[0])[2];
 
 const DODGE = 'position_dodge(width = 0.8)';
+const COR_METHODS = [['pearson', "Pearson's r"], ['spearman', "Spearman's rho"], ['kendall', "Kendall's tau"]];
+const COR_ADJUST = [['none', 'No adjustment'], ['holm', 'Holm'], ['bonferroni', 'Bonferroni'], ['fdr', 'False discovery rate']];
+export const COR_LABELS = [['r', 'r'], ['r_stars', 'r with stars (*)'], ['r_p', 'r and "p = 0.012"'], ['r_pnum', 'r and 0.012'],
+  ['stars', 'Stars only'], ['p', '"p = 0.012" only'], ['pnum', '0.012 only'], ['none', 'Nothing']];
 const dodgeParam = { key: 'dodge', label: 'Place groups side by side (dodge)', type: 'bool', def: false };
 const errorArgs = (p) => {
   const a = [`fun.data = ${errorFun(p.error)}`];
@@ -236,6 +240,56 @@ export const GEOMS = {
     params: [{ key: 'intercept', label: 'At X =', type: 'number', def: 0, step: 0.1 }],
     build: (p) => ({ fn: 'geom_vline', args: [`xintercept = ${rnum(p.intercept)}`] }),
   },
+  cor_heatmap: {
+    label: 'Correlation heatmap (every pair of columns)', category: 'Correlation', helper: 'ag_cor_heatmap', fills: true,
+    aes: [], required: [],
+    params: [
+      { key: 'columns', label: 'Columns (none ticked = every number column)', type: 'columns', def: [] },
+      { key: 'method', label: 'Correlation', type: 'select', options: COR_METHODS, def: 'pearson' },
+      { key: 'label', label: 'Text in each tile', type: 'select', options: COR_LABELS, def: 'r' },
+      { key: 'adjust', label: 'Adjust P values for the number of pairs', type: 'select', options: COR_ADJUST, def: 'none', showIf: (p) => /p|stars/.test(p.label) },
+      { key: 'digits', label: 'Decimals for r', type: 'number', def: 2, min: 0, max: 4, step: 1, showIf: (p) => /^r/.test(p.label) },
+      { key: 'triangle', label: 'Show', type: 'select', options: [['full', 'Every cell'], ['lower', 'Lower triangle'], ['upper', 'Upper triangle']], def: 'full' },
+      { key: 'text_size', label: 'Text size (blank = fits the tiles)', type: 'number', def: '', min: 1, max: 12, step: 0.2, showIf: (p) => p.label !== 'none' },
+      { key: 'text_colour', label: 'Text colour', type: 'select', options: [['auto', 'Black or white, to stand out'], ['black', 'Black'], ['white', 'White']], def: 'auto', showIf: (p) => p.label !== 'none' },
+      { key: 'border', label: 'Tile borders', type: 'colour', def: '#ffffff' },
+    ],
+    build: (p, layer) => {
+      const P = layer.palette || {};
+      const extra = {};
+      if (p.text_colour === 'auto' && p.label !== 'none') {
+        extra.dark = darkEnds(P);
+        const set = (v) => v !== '' && v != null && !Number.isNaN(Number(v));
+        if (set(P.min) && set(P.max)) extra.limits = `c(${rnum(P.min)}, ${rnum(P.max)})`;
+      }
+      return { fn: 'ag_cor_heatmap', args: helperArgs(GEOMS.cor_heatmap.params, p, extra, { dark: 'low', limits: 'c(-1, 1)' }) };
+    },
+  },
+  scatter_matrix: {
+    label: 'Scatterplot matrix (each pair of columns as an XY plot)', category: 'Correlation', helper: 'ag_scatter_matrix',
+    aes: [], required: [],
+    params: [
+      { key: 'columns', label: 'Columns (none ticked = every number column)', type: 'columns', def: [] },
+      { key: 'triangle', label: 'Pairs', type: 'select', options: [['lower', 'Each pair once (lower left)'], ['upper', 'Each pair once (upper right)'], ['both', 'Both ways round']], def: 'lower' },
+      { key: 'point_size', label: 'Point size', type: 'number', def: 1.6, min: 0, max: 10, step: 0.2 },
+      { key: 'colour_by', label: 'Colour points by (optional)', type: 'column', def: '' },
+      { key: 'point_colour', label: 'Point colour', type: 'colour', def: '#000000', showIf: (p) => !p.colour_by },
+      { key: 'alpha', label: 'Point opacity', type: 'number', def: 0.8, min: 0, max: 1, step: 0.05 },
+      { key: 'line', label: 'Line', type: 'select', options: [['lm', 'Straight line (regression)'], ['loess', 'Smooth curve (LOESS)'], ['none', 'No line']], def: 'lm' },
+      { key: 'intercept', label: 'With an intercept (untick to force the line through 0, 0)', type: 'bool', def: true, showIf: (p) => p.line === 'lm' },
+      { key: 'line_type', label: 'Line style', type: 'select', options: [['solid', 'Solid'], ['dashed', 'Dashed'], ['dotted', 'Dotted'], ['dotdash', 'Dot-dash'], ['longdash', 'Long dashes']], def: 'solid', showIf: (p) => p.line !== 'none' },
+      { key: 'line_width', label: 'Line width', type: 'number', def: 0.8, min: 0.1, max: 5, step: 0.1, showIf: (p) => p.line !== 'none' },
+      { key: 'line_colour', label: 'Line colour', type: 'colour', def: '#0072B2', showIf: (p) => p.line !== 'none' },
+      { key: 'se', label: 'Show the 95% confidence band', type: 'bool', def: false, showIf: (p) => p.line !== 'none' },
+      { key: 'method', label: 'Correlation', type: 'select', options: COR_METHODS, def: 'pearson' },
+      { key: 'label', label: 'Text in each panel', type: 'select', options: COR_LABELS, def: 'r_p' },
+      { key: 'adjust', label: 'Adjust P values for the number of pairs', type: 'select', options: COR_ADJUST, def: 'none', showIf: (p) => /p|stars/.test(p.label) },
+      { key: 'digits', label: 'Decimals for r', type: 'number', def: 2, min: 0, max: 4, step: 1, showIf: (p) => /^r/.test(p.label) },
+      { key: 'position', label: 'Text position', type: 'select', options: [['top-left', 'Top left'], ['top-right', 'Top right'], ['bottom-left', 'Bottom left'], ['bottom-right', 'Bottom right']], def: 'top-left', showIf: (p) => p.label !== 'none' },
+      { key: 'label_size', label: 'Text size', type: 'number', def: 3.4, min: 1, max: 12, step: 0.2, showIf: (p) => p.label !== 'none' },
+    ],
+    build: (p) => ({ fn: 'ag_scatter_matrix', args: helperArgs(GEOMS.scatter_matrix.params, p) }),
+  },
   custom: {
     label: 'Custom R code (+ anything ggplot2)', category: 'Other', noData: true, custom: true,
     aes: [], required: [], params: [],
@@ -243,7 +297,24 @@ export const GEOMS = {
   },
 };
 
-export const GEOM_CATEGORIES = ['Points', 'Summaries', 'Distributions', 'Bars', 'Lines', 'Other'];
+export const GEOM_CATEGORIES = ['Points', 'Summaries', 'Distributions', 'Bars', 'Lines', 'Correlation', 'Other'];
+
+// Arguments for a layer drawn by an R helper (ag_cor_heatmap…): the settings
+// that differ from their defaults, then `extra` ones (unless they match `skip`).
+function helperArgs(params, p, extra = {}, skip = {}) {
+  const a = [];
+  for (const d of params) {
+    const v = p[d.key];
+    if (d.showIf && !d.showIf(p)) continue;
+    if (v === undefined || v === '' || JSON.stringify(v) === JSON.stringify(d.def)) continue;
+    if (d.type === 'columns') { if (v.length) a.push(`${d.key} = ${rvec(v.map(rstr), '  ')}`); continue; }
+    if (d.type === 'bool') a.push(`${d.key} = ${rbool(v)}`);
+    else if (d.type === 'number') a.push(`${d.key} = ${rnum(v)}`);
+    else a.push(`${d.key} = ${rstr(v)}`);
+  }
+  for (const [k, v] of Object.entries(extra)) if (v !== skip[k]) a.push(`${k} = ${/^c\(/.test(v) ? v : rstr(v)}`);
+  return a;
+}
 
 export function geomDefaults(key) {
   const out = {};
@@ -285,6 +356,10 @@ export const PALETTES = [
   ['default', 'ggplot2 default'],
   ['okabe', 'Okabe-Ito (colour-blind safe)'],
   ['viridis', 'Viridis'],
+  ['correlation', 'Correlation: blue (-1) to red (+1)'],
+  ['diverging', 'Diverging: blue (below 0) to red (above 0)'],
+  ['gradient', 'Two colours of your choice (for numbers)'],
+  ['gradient2', 'Three colours of your choice (for numbers)'],
   ['grey', 'Greys'],
   ['Set1', 'Brewer: Set1'],
   ['Set2', 'Brewer: Set2'],
@@ -409,7 +484,11 @@ export function graphCode(g, ctx) {
       return;
     }
     const params = { ...geomDefaults(l.geom), ...(l.params || {}) };
-    const built = geom.build(params, { ...layers[li], xDiscrete });
+    const built = geom.build(params, { ...layers[li], xDiscrete, palette: g.palette });
+    if (geom.helper) {
+      parts.push(`${built.fn}(${[ctx.rnameOf(layers[li].dataset), ...built.args].join(', ')})`);
+      return;
+    }
     const maps = new Map();
     const consts = [];
     // A plot-wide X or Y the geom has no use for (e.g. Y for a histogram, which
@@ -478,26 +557,27 @@ export function graphCode(g, ctx) {
   }
 
   // Colour / fill scales.
-  const pal = g.palette?.name || 'default';
-  if (pal !== 'default') {
-    for (const aesKey of ['colour', 'fill']) {
-      const owner = dataLayers.find((l) => l.aes?.[aesKey]?.mode === 'col');
-      if (!owner) continue;
-      const continuous = isNumericMap(owner, owner.aes[aesKey]);
-      const sc = aesKey === 'colour' ? 'colour' : 'fill';
-      if (continuous) {
-        if (pal === 'viridis') parts.push(`scale_${sc}_viridis_c()`);
-        else if (pal === 'grey') parts.push(`scale_${sc}_gradient(low = "grey85", high = "grey10")`);
-        continue;
-      }
-      if (pal === 'okabe') parts.push(`scale_${sc}_manual(values = ag_okabe_ito)`);
-      else if (pal === 'viridis') parts.push(`scale_${sc}_viridis_d(end = 0.9)`);
-      else if (pal === 'grey') parts.push(sc === 'fill' ? 'scale_fill_grey(start = 0.35, end = 0.9)' : 'scale_colour_grey(start = 0, end = 0.6)');
-      else if (pal === 'manual') {
-        const entries = Object.entries(g.palette.manual || {}).filter(([, v]) => v);
-        if (entries.length) parts.push(`scale_${sc}_manual(values = ${rvec(entries.map(([k, v]) => `${rstr(k)} = ${rstr(v)}`), '  ')})`);
-      } else parts.push(`scale_${sc}_brewer(palette = ${rstr(pal)})`);
+  const P = g.palette || {};
+  const pal = P.name || 'default';
+  const owners = scaleOwners(g, ctx.schemaOf);
+  for (const aesKey of ['colour', 'fill']) {
+    const owner = owners[aesKey];
+    if (!owner) continue;
+    const sc = aesKey;
+    if (owner.continuous) {
+      const code = continuousScale(sc, P);
+      if (code) parts.push(code);
+      continue;
     }
+    if (pal === 'default' || pal === 'gradient' || pal === 'gradient2') continue;
+    if (pal === 'okabe') parts.push(`scale_${sc}_manual(values = ag_okabe_ito)`);
+    else if (pal === 'correlation' || pal === 'diverging') parts.push(`scale_${sc}_brewer(palette = "RdBu")`);
+    else if (pal === 'viridis') parts.push(`scale_${sc}_viridis_d(end = 0.9${P.option && P.option !== 'viridis' ? `, option = ${rstr(P.option)}` : ''}${P.reverse ? ', direction = -1' : ''})`);
+    else if (pal === 'grey') parts.push(sc === 'fill' ? 'scale_fill_grey(start = 0.35, end = 0.9)' : 'scale_colour_grey(start = 0, end = 0.6)');
+    else if (pal === 'manual') {
+      const entries = Object.entries(P.manual || {}).filter(([, v]) => v);
+      if (entries.length) parts.push(`scale_${sc}_manual(values = ${rvec(entries.map(([k, v]) => `${rstr(k)} = ${rstr(v)}`), '  ')})`);
+    } else parts.push(`scale_${sc}_brewer(palette = ${rstr(pal)})`);
   }
 
   // Axes. Ranges go to the coordinate system (coord_cartesian), which zooms
@@ -556,7 +636,7 @@ export function graphCode(g, ctx) {
   else if (L.y || (ST.y_title?.underline && defaultY)) labs.push(`y = ${label(L.y || defaultY, ST.y_title)}`);
   if (L.legend) {
     for (const k of ['colour', 'fill', 'shape']) {
-      if (dataLayers.some((l) => l.aes?.[k]?.mode === 'col')) labs.push(`${k} = ${rstr(L.legend)}`);
+      if (dataLayers.some((l) => l.aes?.[k]?.mode === 'col') || owners[k]) labs.push(`${k} = ${rstr(L.legend)}`);
     }
   }
   if (labs.length) parts.push(`labs(${labs.join(', ')})`);
@@ -670,6 +750,84 @@ function compareCode(ann, main, yLayer, ctx) {
   if (ann.step !== '' && ann.step != null && Number(ann.step) !== 0.09) a.push(`step = ${rnum(ann.step)}`);
   if (ann.text_size && Number(ann.text_size) !== 4.5) a.push(`text_size = ${rnum(ann.text_size)}`);
   return `ag_stat_compare(${a.join(', ')})`;
+}
+
+// The layer whose colour (or fill) the colour scale is for, and whether that is
+// a continuous (number) mapping. A correlation heatmap's fill is always r.
+export function scaleOwners(g, schemaOf) {
+  const out = {};
+  const pal = g.palette?.name;
+  for (const l of effectiveLayers(g)) {
+    const geom = GEOMS[l.geom];
+    if (!geom || l.hidden || geom.noData) continue;
+    for (const aesKey of ['colour', 'fill']) {
+      if (out[aesKey]) continue;
+      let m = l.aes?.[aesKey];
+      if (geom.helper) {
+        if (aesKey === 'fill' && geom.fills) { out.fill = { layer: l, continuous: true }; continue; }
+        const by = { ...geomDefaults(l.geom), ...(l.params || {}) }.colour_by;
+        if (aesKey === 'colour' && by) m = { mode: 'col', col: by }; else continue;
+      }
+      if (m?.mode !== 'col' || !m.col) continue;
+      const type = schemaOf(l.dataset)?.columns?.find((c) => c.name === m.col)?.type;
+      // r values are numbers even before their dataset has been run (and its column types are known).
+      const continuous = (type === 'numeric' || (type === undefined && pal === 'correlation')) && !m.factor;
+      out[aesKey] = { layer: l, mapping: m, type, continuous };
+    }
+  }
+  return out;
+}
+
+// Continuous colour schemes, with optional limits (values beyond them take the end colour).
+export const VIRIDIS_OPTIONS = [['viridis', 'Viridis'], ['magma', 'Magma'], ['plasma', 'Plasma'], ['inferno', 'Inferno'], ['cividis', 'Cividis'], ['mako', 'Mako'], ['rocket', 'Rocket'], ['turbo', 'Turbo']];
+const BLUE = '#2166ac';
+const RED = '#b2182b';
+const WHITE = '#f7f7f7';
+
+function continuousScale(sc, P) {
+  const name = P.name || 'default';
+  const set = (v) => v !== '' && v != null && !Number.isNaN(Number(v));
+  const lim = set(P.min) || set(P.max) ? [`limits = c(${set(P.min) ? rnum(P.min) : 'NA'}, ${set(P.max) ? rnum(P.max) : 'NA'})`, 'oob = scales::squish'] : [];
+  const mid = `midpoint = ${set(P.midpoint) ? rnum(P.midpoint) : 0}`;
+  switch (name) {
+    case 'viridis': {
+      const a = [];
+      if (P.option && P.option !== 'viridis') a.push(`option = ${rstr(P.option)}`);
+      if (P.reverse) a.push('direction = -1');
+      return `scale_${sc}_viridis_c(${[...a, ...lim].join(', ')})`;
+    }
+    case 'correlation': case 'diverging': {
+      const [lo, hi] = P.reverse ? [RED, BLUE] : [BLUE, RED];
+      const range = name === 'correlation' && !lim.length ? ['limits = c(-1, 1)'] : lim;
+      return `scale_${sc}_gradient2(${[`low = ${rstr(lo)}`, `mid = ${rstr(WHITE)}`, `high = ${rstr(hi)}`, mid, ...range].join(', ')})`;
+    }
+    case 'gradient': return `scale_${sc}_gradient(${[`low = ${rstr(P.low || '#f7fbff')}`, `high = ${rstr(P.high || '#08306b')}`, ...lim].join(', ')})`;
+    case 'gradient2': return `scale_${sc}_gradient2(${[`low = ${rstr(P.low || BLUE)}`, `mid = ${rstr(P.mid || WHITE)}`, `high = ${rstr(P.high || RED)}`, mid, ...lim].join(', ')})`;
+    case 'grey': return `scale_${sc}_gradient(${['low = "grey85"', 'high = "grey10"', ...lim].join(', ')})`;
+    default: return lim.length ? `scale_${sc}_continuous(${lim.join(', ')})` : null;
+  }
+}
+
+// Which end(s) of a continuous scheme are dark, so text on it can be white there.
+function darkEnds(P) {
+  const name = P.name || 'default';
+  const dark = (hex) => luminance(hex) < 0.3;
+  let lo; let hi;
+  if (name === 'viridis') return P.reverse ? 'high' : 'low';
+  if (name === 'correlation' || name === 'diverging') return 'both';
+  if (name === 'gradient') { lo = P.low || '#f7fbff'; hi = P.high || '#08306b'; }
+  else if (name === 'gradient2') { lo = P.low || BLUE; hi = P.high || RED; }
+  else if (name === 'grey') return 'high';
+  else return 'low'; // ggplot2's default: dark blue to light blue
+  return dark(lo) && dark(hi) ? 'both' : dark(lo) ? 'low' : dark(hi) ? 'high' : 'none';
+}
+
+function luminance(hex) {
+  const m = /^#?([0-9a-f]{6})$/i.exec(hex || '');
+  if (!m) return 0.5;
+  const n = parseInt(m[1], 16);
+  const lin = (c) => { const v = c / 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; };
+  return 0.2126 * lin(n >> 16) + 0.7152 * lin((n >> 8) & 255) + 0.0722 * lin(n & 255);
 }
 
 export function graphDeps(g) {

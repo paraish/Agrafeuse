@@ -130,6 +130,10 @@ export class StatsView {
       }
       return out;
     }
+    if (t.inputs.numbers) {
+      out.push(field('Columns', multiCheck(nums, a.columns, (v) => { a.columns = v; this.changed(); }, { k: 'cols' }),
+        { hint: 'Nothing ticked = every number column.' }));
+    }
     if (t.inputs.x) out.push(field('X', bindSelect(a, 'x', nums, ch(), { placeholder: 'Choose a number column…', k: 'x' })));
     if (t.inputs.y) out.push(field(t.inputs.x ? 'Y' : 'Values (Y)', bindSelect(a, 'y', nums, ch(), { placeholder: 'Choose a number column…', k: 'y' })));
     if (t.inputs.group) {
@@ -210,7 +214,9 @@ export class StatsView {
     const body = [];
     if (!r.ok) body.push(messageBox(r.incomplete ? 'info' : 'error', r.error));
     else {
-      body.push(h('div.result-head', h('h3', res.title), t.annotations.length ? button('Add to a graph', () => this.addToGraph(), { iconName: 'graph', kind: 'primary', k: 'to-graph' }) : null));
+      body.push(h('div.result-head', h('h3', res.title),
+        t.annotations.length ? button('Add to a graph', () => this.addToGraph(), { iconName: 'graph', kind: 'primary', k: 'to-graph' }) : null,
+        a.test === 'cormatrix' ? button('Make a heatmap', () => this.app.added(this.app.graphForAnalysis(a)), { iconName: 'graph', kind: 'primary', k: 'to-heatmap' }) : null));
       if (res.summary) body.push(h('p.summary', res.summary));
       for (const n of res.notes || []) body.push(messageBox('info', n));
       for (const tab of res.tables) body.push(h('div.result-table', h('h4', tab.name), dataTable(tab)));

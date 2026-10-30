@@ -31,7 +31,7 @@ STEP is one of:
 {"type":"select","columns":[C],"drop":false} {"type":"mutate","name":C,"expr":"R expression"} {"type":"rename","from":C,"to":C}
 {"type":"group_by","columns":[C]} {"type":"ungroup"} {"type":"summarise","column":C,"stats":["mean","sd","sem","n","median","min","max"],"group_by":[C]}
 {"type":"arrange","column":C,"desc":false} {"type":"count","columns":[C]} {"type":"slice","mode":"head|tail|max|min","n":5,"column":C}
-{"type":"distinct","columns":[C]} {"type":"drop_na","columns":[C]} {"type":"pivot_longer","cols":[C],"names_to":"group","values_to":"value"} {"type":"pivot_wider","names_from":C,"values_from":C}
+{"type":"distinct","columns":[C]} {"type":"drop_na","columns":[C]} {"type":"correlate","columns":[C],"method":"pearson|spearman|kendall"} {"type":"pivot_longer","cols":[C],"names_to":"group","values_to":"value"} {"type":"pivot_wider","names_from":C,"values_from":C}
 TEST: ${Object.entries(TESTS).map(([k, t]) => `${k}${testNeeds(t)}`).join(' | ')}
 TEMPLATE: ${GRAPH_TEMPLATES.filter((t) => t.key !== 'blank').map((t) => t.key + (t.needs.includes('group') ? '(group)' : '')).join(' | ')}
 GEOM: ${Object.keys(GEOMS).filter((k) => !GEOMS[k].custom).join(' | ')}
@@ -39,7 +39,7 @@ Tests and graphs by group need a column of groups and a column of numbers (long 
 
 function testNeeds(t) {
   const i = t.inputs || {};
-  const n = [i.x && 'x', i.y && 'y', i.group === true && 'group', i.subject && 'subject', i.factorB && 'factorB', i.fixed && 'fixed', i.random && 'random'].filter(Boolean);
+  const n = [i.numbers && 'columns', i.x && 'x', i.y && 'y', i.group === true && 'group', i.subject && 'subject', i.factorB && 'factorB', i.fixed && 'fixed', i.random && 'random'].filter(Boolean);
   return n.length ? `(${n.join(',')})` : '';
 }
 
@@ -101,7 +101,7 @@ const TEST_ALIASES = [
   [/wilcoxon.*(paired|signed)|signed.?rank|paired.*wilcoxon/, 'wilcoxon_paired'], [/mann|whitney|wilcox|rank.?sum/, 'mann_whitney'],
   [/welch.*anova|anova.*welch|games/, 'welch_anova'], [/kruskal/, 'kruskal'], [/friedman/, 'friedman'],
   [/repeated|rm.?anova/, 'rm_anova'], [/two.?way|2.?way|anova2/, 'anova2'], [/mixed|lmer|lme/, 'mixed'],
-  [/anova|one.?way/, 'anova1'], [/correl|pearson|spearman|kendall/, 'correlation'], [/regress|linear model|fit|dose/, 'regression'],
+  [/anova|one.?way/, 'anova1'], [/matri|heat.?map|every pair|all pairs|pairwise correl/, 'cormatrix'], [/correl|pearson|spearman|kendall/, 'correlation'], [/regress|linear model|fit|dose/, 'regression'],
   [/normal|shapiro/, 'normality'], [/descri|summary|mean/, 'descriptive'], [/t.?test|student|welch|unpaired/, 'ttest_unpaired'],
 ];
 
@@ -122,6 +122,7 @@ function resolveTemplate(name) {
   if (/box/.test(s)) return 'box';
   if (/violin/.test(s)) return 'violin';
   if (/hist/.test(s)) return 'histogram';
+  if (/heat|matri|correlogram/.test(s)) return 'cor_heatmap';
   if (/time|line|course/.test(s)) return 'time_course';
   if (/xy|regress|correl|fit/.test(s)) return 'xy';
   if (/dot|scatter|strip|jitter|point/.test(s)) return 'scatter_dot';
@@ -210,6 +211,7 @@ export function normalizeAction(raw) {
       if (Array.isArray(a.group)) a.group = a.group[0];
       a.subject = pick('subject', 'id', 'subject_id', 'block', 'pairing', 'paired_by');
       a.factorB = pick('factorB', 'factor_b', 'factor2', 'second_factor');
+      a.columns = asList(pick('columns', 'variables', 'cols'));
       if (d === 'new_analysis' && a.name && TESTS[resolveTest(a.name)] === TESTS[a.test]) delete a.name;
       break;
     case 'new_graph':
@@ -217,6 +219,7 @@ export function normalizeAction(raw) {
       a.dataset = pick('dataset', 'data', 'table', 'source', 'from');
       a.x = pick('x', 'x_column', 'xvar', 'group_column');
       a.y = pick('y', 'y_column', 'yvar', 'value', 'values');
+      a.columns = asList(pick('columns', 'variables', 'cols'));
       a.group = pick('group', 'colour', 'color', 'fill', 'by');
       break;
     case 'compare_groups':
@@ -590,7 +593,7 @@ const HANDLERS = {
     }
     const extra = { layout: 'long' };
     for (const k of ['y', 'group', 'subject', 'factorB', 'x']) if (a[k]) extra[k] = fix(a[k]);
-    for (const k of ['fixed', 'random']) if (Array.isArray(a[k])) extra[k] = a[k].map((c) => fix(c));
+    for (const k of ['fixed', 'random', 'columns']) if (Array.isArray(a[k])) extra[k] = a[k].map((c) => fix(c));
     const need = (k, label) => { if (inputs[k] === true && !extra[k] && !(k === 'fixed' && extra.fixed?.length)) throw new Skip(`${test.label} needs ${label}.`); };
     need('y', 'a value column (y)'); need('group', 'a group column'); need('subject', 'a subject column');
     need('factorB', 'a second factor (factorB)'); need('x', 'an x column');
@@ -623,7 +626,8 @@ const HANDLERS = {
     const fix = columnFixer(ctx, ds.id);
     const x = fix(a.x), y = fix(a.y), group = fix(a.group);
     for (const k of tpl.needs) if (!{ x, y, group }[k]) throw new Skip(`A ${tpl.label.toLowerCase()} needs ${k === 'group' ? 'a group column' : `an ${k.toUpperCase()} column`}.`);
-    const g = graphFromTemplate(ctx.p, tpl.key, { dataset: ds.id, x, y, group, name: uniqueName(ctx.p, a.name || `${ds.name} graph`) });
+    const columns = (asList(a.columns) || []).map((c) => fix(c));
+    const g = graphFromTemplate(ctx.p, tpl.key, { dataset: ds.id, x, y, group, columns, name: uniqueName(ctx.p, a.name || `${ds.name} graph`) });
     made(ctx, g, a.name);
     ctx.show = g.id;
     return note;

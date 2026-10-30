@@ -47,6 +47,7 @@ export class TransformView {
       if (s.type === 'rename') add(s.to);
       if (s.type === 'summarise') (s.stats || []).forEach(add);
       if (s.type === 'count') add('n');
+      if (s.type === 'correlate') ['column1', 'column2', 'r', 'lower', 'upper', 'p', 'p_adjusted', 'n', 'label', 'label_stars'].forEach(add);
       if (s.type === 'transpose') add('name');
     });
     // After steps whose new columns depend on the data, offer what the output has.

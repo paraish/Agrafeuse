@@ -461,6 +461,24 @@ export const TESTS = {
         `ag_result_cor(test, d, ${rstr(a.x)}, ${rstr(a.y)}, ${rstr(m)})`];
     },
   },
+  cormatrix: {
+    label: 'Correlation matrix', category: 'Relationships',
+    short: 'Every number column against every other.',
+    explain: "Correlates each chosen column with every other one: a table of r values, their P values and the number of rows each pair uses, plus a list of every pair with its 95% confidence interval (Pearson).\n\nPearson's r measures straight-line relationships; Spearman's rho and Kendall's tau use ranks, so they capture any steadily rising or falling relationship and resist outliers.\n\nWith many columns there are many pairs, and some will look significant by chance: adjusting the P values for the number of pairs (Holm, or the false discovery rate) guards against that.\n\nFor a picture, make a heatmap: each cell coloured by r, from blue (-1) through white (0) to red (+1).",
+    inputs: { layout: false, numbers: true },
+    options: [{ key: 'method', label: 'Method', type: 'select', def: 'pearson', options: [['pearson', "Pearson's r"], ['spearman', "Spearman's rho"], ['kendall', "Kendall's tau"]] },
+      { key: 'adjust', label: 'Adjust P values for the number of pairs', type: 'select', def: 'none', options: [['none', 'No adjustment'], ...P_ADJUST.filter(([v]) => v !== 'none')] }],
+    annotations: [],
+    code(a, ctx) {
+      const o = a.options || {};
+      const cols = (a.columns || []).filter(Boolean);
+      if (cols.length === 1) throw new Error('Choose at least two columns (or none, for every number column).');
+      const args = [ctx.rnameOf(a.dataset), cols.length ? rvec(cols.map(rstr), '  ') : 'NULL'];
+      if ((o.method || 'pearson') !== 'pearson') args.push(`method = ${rstr(o.method)}`);
+      if (o.adjust && o.adjust !== 'none') args.push(`adjust = ${rstr(o.adjust)}`);
+      return [`ag_result_cormatrix(${args.join(', ')})`];
+    },
+  },
   regression: {
     label: 'Regression / curve fit', category: 'Relationships',
     short: 'Fit a line or curve (incl. dose-response, EC50).',

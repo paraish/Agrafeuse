@@ -216,6 +216,7 @@ details.section[open] > summary::before { transform: rotate(45deg); }
 .aes-ctl > select { flex: 1; min-width: 120px; }
 .colour-pick { display: inline-flex; gap: 6px; align-items: center; }
 .layer .params { margin-top: 10px; padding-top: 8px; border-top: 1px dashed var(--border); }
+.param.param-wide { flex-direction: column; align-items: stretch; }
 /* plot-wide data and aesthetics, inherited by the layers */
 .base-card { border-color: var(--accent-line); }
 .base-card .card-body > .hint { margin-top: 0; }
@@ -283,6 +284,14 @@ details.about p { margin: 8px 0 0; }
 .sheet .colhead { cursor: pointer; }
 .sheet .colhead.sel { background: var(--accent-weak); }
 .sheet .colname { overflow: hidden; text-overflow: ellipsis; padding: 2px 2px 3px; }
+/* the grip to drag a column by, shown on hover */
+.sheet th.colhead:not(.ghost):not(.rowname-head) .colname { margin-left: 12px; }
+.sheet .col-grip { position: absolute; left: 2px; top: 6px; width: 12px; text-align: center; font-size: 11px; letter-spacing: -2px; color: var(--faint); cursor: grab; opacity: 0; user-select: none; }
+.sheet th.colhead:hover .col-grip, .sheet th.colhead.sel .col-grip { opacity: 1; }
+.sheet .col-grip:hover { color: var(--accent); }
+@media (hover: none) { .sheet .col-grip { opacity: 0.6; } }
+.grid.col-dragging, .grid.col-dragging * { cursor: grabbing !important; }
+.col-drop { position: absolute; width: 3px; background: var(--accent); z-index: 6; pointer-events: none; border-radius: 2px; }
 .sheet th.colhead:not(.ghost):not(.rowname-head) .colname { cursor: text; border-radius: 4px; }
 .sheet th.colhead:not(.ghost):not(.rowname-head) .colname:hover { background: var(--panel); box-shadow: inset 0 0 0 1px var(--border-strong); }
 .sheet .coltype { height: 22px; font-size: 11.5px; padding: 0 2px; color: var(--muted); width: 100%; border-color: var(--border); }

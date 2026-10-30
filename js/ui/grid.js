@@ -4,6 +4,7 @@
 // paste blocks (to and from Excel), Shift+arrows select a range.
 // Column names are the header row; row names are an optional first column
 // (index -1 here), e.g. subject IDs, which R gets as a "row_name" column.
+// Columns move by dragging the grip in their header, or with Ctrl+Shift+arrows.
 import { h, clear } from './dom.js';
 import { parseDelimited, isMissing, parseNumber } from '../codegen/data.js';
 
@@ -148,7 +149,7 @@ export class Grid {
       headCells.push(h('th.colhead', {
         'data-r': -1, 'data-c': c,
         class: [ghost ? 'ghost' : '', selected ? 'sel' : '', this.types[c] === 'numeric' ? 'num' : ''].join(' '),
-      }, h('div.colname', { title: ghost ? 'Add a column' : 'Click to rename' },
+      }, ghost ? null : h('span.col-grip', { title: 'Drag to move this column', 'aria-hidden': 'true' }, '⋮⋮'), h('div.colname', { title: ghost ? 'Add a column' : 'Click to rename' },
         ghost ? '+ new column' : (col.name || `Column ${c + 1}`)), typeSel));
     }
 
@@ -271,7 +272,8 @@ export class Grid {
     if (this.editing || e.target !== this.el) return;
     const mod = e.ctrlKey || e.metaKey;
     const k = e.key;
-    if (k === 'ArrowDown') { e.preventDefault(); this.move(1, 0, e.shiftKey); }
+    if (mod && e.shiftKey && (k === 'ArrowLeft' || k === 'ArrowRight')) { e.preventDefault(); this.moveSelection(k === 'ArrowLeft' ? -1 : 1); }
+    else if (k === 'ArrowDown') { e.preventDefault(); this.move(1, 0, e.shiftKey); }
     else if (k === 'ArrowUp') { e.preventDefault(); this.move(-1, 0, e.shiftKey); }
     else if (k === 'ArrowRight') { e.preventDefault(); this.move(0, 1, e.shiftKey); }
     else if (k === 'ArrowLeft') { e.preventDefault(); this.move(0, -1, e.shiftKey); }
@@ -301,6 +303,11 @@ export class Grid {
     if (e.target === this.editor || e.target.closest('select')) return;
     const t = this.target(e);
     if (!t) return;
+    if (e.target.closest('.col-grip') && t.r === -1 && t.c >= 0) {
+      e.preventDefault();
+      this.startColumnDrag(e, t.c);
+      return;
+    }
     if (this.editing) this.commitEdit();
     e.preventDefault();
     this.el.focus({ preventScroll: true });
@@ -418,6 +425,75 @@ export class Grid {
     this.t.columns.splice(at, 0, { name: `Column ${this.ncol + 1}`, type: 'auto' });
     for (const row of this.t.rows) if (row.length > at) row.splice(at, 0, '');
     this.changed(true);
+  }
+
+  // ---- moving columns ----------------------------------------------------------------------------
+
+  // Drag a column by its grip; the selected columns go together when it is one of them.
+  // A line shows where they will land, and the grid scrolls sideways near its edges.
+  startColumnDrag(e, c) {
+    if (this.editing) this.commitEdit();
+    const { r0, c0, c1 } = this.rect();
+    const block = r0 === -1 && c0 >= 0 && c >= c0 && c <= c1 ? [c0, Math.min(c1, this.ncol - 1)] : [c, c];
+    this.sel = { r: -1, c: block[0], r2: -1, c2: block[1] };
+    this.render();
+    const line = h('div.col-drop');
+    this.el.append(line);
+    this.el.classList.add('col-dragging');
+    let to = null;
+    const move = (ev) => {
+      const heads = [...this.sheet.querySelectorAll('thead th.colhead[data-c]')].filter((th) => Number(th.dataset.c) >= 0 && Number(th.dataset.c) < this.ncol);
+      const gr = this.el.getBoundingClientRect();
+      to = this.ncol;
+      let x = null;
+      for (const th of heads) {
+        const r = th.getBoundingClientRect();
+        if (ev.clientX < r.left + r.width / 2) { to = Number(th.dataset.c); x = r.left; break; }
+      }
+      if (x === null) x = heads.length ? heads[heads.length - 1].getBoundingClientRect().right : gr.left;
+      Object.assign(line.style, { left: `${x - gr.left + this.el.scrollLeft - 1}px`, top: `${this.el.scrollTop}px`, height: `${this.el.clientHeight}px` });
+      // The row numbers and row names stay on the left (about 180 px).
+      if (ev.clientX > gr.right - 30) this.el.scrollLeft += 16;
+      else if (ev.clientX < gr.left + 200) this.el.scrollLeft -= 16;
+    };
+    const up = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      line.remove();
+      this.el.classList.remove('col-dragging');
+      if (to != null) this.moveColumns(block[0], block[1], to);
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+    move(e);
+  }
+
+  // Move the selected columns one place left (-1) or right (+1).
+  moveSelection(d) {
+    const { c0, c1 } = this.rect();
+    const a = Math.max(0, c0);
+    const b = Math.min(c1, this.ncol - 1);
+    if (a > b) return;
+    if (d < 0 && a > 0) this.moveColumns(a, b, a - 1);
+    else if (d > 0 && b < this.ncol - 1) this.moveColumns(a, b, b + 2);
+  }
+
+  // Move columns c0..c1 (names, types and every row's values) to sit before
+  // column `to` (ncol = at the end). They stay selected.
+  moveColumns(c0, c1, to) {
+    if (to >= c0 && to <= c1 + 1) return;
+    const n = c1 - c0 + 1;
+    const at = to > c1 ? to - n : to;
+    const width = this.ncol;
+    const reorder = (arr) => { const block = arr.splice(c0, n); arr.splice(at, 0, ...block); };
+    reorder(this.t.columns);
+    for (const row of this.t.rows) {
+      while (row.length < width) row.push('');
+      reorder(row);
+    }
+    this.sel = { r: -1, c: at, r2: -1, c2: at + n - 1 };
+    this.changed(true);
+    this.onSelect(this.rect());
   }
 
   deleteColumns() {

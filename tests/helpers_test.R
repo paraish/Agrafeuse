@@ -52,6 +52,14 @@ ok("stat compare + text box draw", {
   r <- jsonlite::fromJSON(ag_draw(p, tempfile(fileext = ".svg"), "svg")); stopifnot(r$ok, !length(r$warnings))
   r <- jsonlite::fromJSON(ag_draw(p, f <- tempfile(fileext = ".svg"), "svg_text")); stopifnot(r$ok, any(grepl("<text", readLines(f))))
 })
+ok("correlation matrix", {
+  r <- ag_result_cormatrix(mtcars, c("mpg", "wt", "hp"), adjust = "holm")
+  stopifnot(abs(r$tables[["Correlation coefficients"]]$wt[1] + 0.8677) < 1e-3, nrow(r$tables$Pairs) == 3)
+  x <- ag_correlate(mtcars, c("mpg", "wt", "hp"))
+  stopifnot(nrow(x) == 9, identical(levels(x$column1), c("mpg", "wt", "hp")), x$label[x$column1 == "mpg" & x$column2 == "wt"] == "-0.87")
+  stopifnot(nrow(ag_correlate(iris, triangle = "half")) == 10)
+  stopifnot(inherits(tryCatch(ag_cor_pairs(iris, c("Species", "Sepal.Length")), error = function(e) e), "error"))
+})
 ok("versions", {
   v <- jsonlite::fromJSON(ag_versions(c("ggplot2", "dplyr", "notapackage")))
   stopifnot(grepl("^[0-9]+[.][0-9]", v$r), !is.null(v$packages$ggplot2), is.null(v$packages$notapackage))

@@ -3,12 +3,12 @@
 import { h, fill, rebuild, debounce, download, safeFilename } from './dom.js';
 import {
   field, select, bindSelect, bindInput, bindCheck, checkbox, colour, segmented, iconButton, button,
-  columnOptions, levelsOf, section, codeBlock, messageBox, input, toast,
+  columnOptions, levelsOf, section, codeBlock, messageBox, input, toast, multiCheck,
 } from './widgets.js';
 import { itemHeader, warningsBox } from './common.js';
 import {
   GEOMS, GEOM_CATEGORIES, AES, PLOT_AES, SHAPES, LINETYPES, THEMES, PALETTES, NUMBER_FORMATS, FONTS,
-  COMPARE_TESTS, NOTE_DEFAULTS, geomDefaults, boldTitles, ensureBase, effectiveLayers, sideBySide,
+  COMPARE_TESTS, NOTE_DEFAULTS, VIRIDIS_OPTIONS, geomDefaults, boldTitles, ensureBase, effectiveLayers, sideBySide, scaleOwners,
 } from '../codegen/graph.js';
 import { TESTS } from '../codegen/stats.js';
 import { datasets, itemsOf, getItem, depsOf, clone } from '../model.js';
@@ -230,12 +230,20 @@ export class GraphView {
 
   paramRow(l, p, k) {
     l.params = l.params || {};
-    if (l.params[p.key] === undefined) l.params[p.key] = p.def;
+    if (l.params[p.key] === undefined) l.params[p.key] = Array.isArray(p.def) ? [...p.def] : p.def;
+    if (p.showIf && !p.showIf(l.params)) return null;
     const ch = () => this.changed();
+    // Settings that show or hide others redraw the card.
+    const redraw = () => this.changed(true);
+    const schema = () => this.schema(l.dataset || this.item.base?.dataset);
     switch (p.type) {
-      case 'bool': return h('div.param', bindCheck(l.params, p.key, p.label, ch, { k }));
-      case 'select': return h('div.param', h('label', p.label), bindSelect(l.params, p.key, p.options, ch, { k }));
-      case 'number': return h('div.param', h('label', p.label), bindInput(l.params, p.key, ch, { type: 'number', step: p.step, min: p.min, max: p.max, k, width: '80px' }));
+      case 'bool': return h('div.param', bindCheck(l.params, p.key, p.label, redraw, { k }));
+      case 'select': return h('div.param', h('label', p.label), bindSelect(l.params, p.key, p.options, redraw, { k }));
+      case 'colour': return h('div.param', h('label', p.label), colour(l.params[p.key] || p.def, (v) => { l.params[p.key] = v; ch(); }, { k }));
+      case 'column': return h('div.param', h('label', p.label), bindSelect(l.params, p.key, columnOptions(schema()), redraw, { placeholder: '(none)', k }));
+      case 'columns': return h('div.param.param-wide', h('label', p.label),
+        multiCheck(columnOptions(schema(), { types: ['numeric'] }), l.params[p.key], (v) => { l.params[p.key] = v; ch(); }, { k, empty: 'Choose the data first.' }));
+      case 'number': return h('div.param', h('label', p.label), bindInput(l.params, p.key, ch, { type: 'number', step: p.step, min: p.min, max: p.max, k, width: '80px', placeholder: p.def === '' ? 'auto' : undefined }));
       default: return h('div.param', h('label', p.label), bindInput(l.params, p.key, ch, { k, width: '80px' }));
     }
   }
@@ -625,22 +633,48 @@ export class GraphView {
     g.palette = g.palette || { name: 'default', manual: {} };
     const leg = g.style.legend_text = g.style.legend_text || {};
     const ch = (s) => () => this.changed(s);
-    const owner = effectiveLayers(g).find((l) => !GEOMS[l.geom].noData && ['colour', 'fill'].some((a) => l.aes?.[a]?.mode === 'col'));
-    const aesKey = owner ? (owner.aes.fill?.mode === 'col' ? 'fill' : 'colour') : null;
-    const levels = owner ? levelsOf(this.schema(owner.dataset), owner.aes[aesKey].col) : [];
     const pal = g.palette;
-    let swatches = null;
-    if (pal.name === 'manual' && owner) {
-      pal.manual = pal.manual || {};
-      levels.forEach((lv, j) => { if (!pal.manual[lv]) pal.manual[lv] = DEFAULT_SWATCHES[j % DEFAULT_SWATCHES.length]; });
-      swatches = h('div.swatches', levels.map((lv) => h('div.swatch',
-        colour(pal.manual[lv], (v) => { pal.manual[lv] = v; this.changed(); }, { k: `sw-${lv}` }), h('span', lv))));
+    if (!pal.option) pal.option = 'viridis';
+    const owners = scaleOwners(g, (id) => this.schema(id));
+    const owner = owners.fill || owners.colour;
+    let colours;
+    if (!owner) {
+      colours = [this.fmtRow('Palette', bindSelect(pal, 'name', PALETTES, ch(true), { k: 'palette' })),
+        h('div.hint', 'No layer maps Colour or Fill to a column. Fixed colours are set in each layer.')];
+    } else if (owner.continuous) {
+      // Numbers: a gradient, with an optional range (values beyond it take the end colour).
+      const schemes = PALETTES.filter(([k]) => ['default', 'viridis', 'correlation', 'diverging', 'gradient', 'gradient2', 'grey'].includes(k));
+      const pick = (key, def) => colour(pal[key] || def, (v) => { pal[key] = v; this.changed(); }, { k: `pal-${key}` });
+      colours = [
+        this.fmtRow('Colours', bindSelect(pal, 'name', schemes, ch(true), { k: 'palette' })),
+        pal.name === 'viridis' ? this.fmtRow('Scheme', bindSelect(pal, 'option', VIRIDIS_OPTIONS, ch(), { k: 'pal-option' }),
+          bindCheck(pal, 'reverse', 'reverse', ch(), { k: 'pal-reverse' })) : null,
+        ['correlation', 'diverging'].includes(pal.name) ? this.fmtRow('Direction', bindCheck(pal, 'reverse', 'red for low values, blue for high', ch(), { k: 'pal-reverse' })) : null,
+        pal.name === 'gradient' ? this.fmtRow('From / to', pick('low', '#f7fbff'), h('span.muted', 'to'), pick('high', '#08306b')) : null,
+        pal.name === 'gradient2' ? this.fmtRow('Low / mid / high', pick('low', '#2166ac'), pick('mid', '#f7f7f7'), pick('high', '#b2182b')) : null,
+        ['diverging', 'gradient2'].includes(pal.name) ? this.fmtRow('Middle at', this.numberBox(pal, 'midpoint', { k: 'pal-mid', placeholder: '0', step: 'any', min: undefined, width: '72px' })) : null,
+        this.fmtRow('Range', this.numberBox(pal, 'min', { k: 'pal-min', placeholder: 'min', step: 'any', min: undefined, width: '72px' }), h('span.muted', 'to'),
+          this.numberBox(pal, 'max', { k: 'pal-max', placeholder: 'max', step: 'any', min: undefined, width: '72px' })),
+        h('div.hint', pal.name === 'correlation' ? 'Blank range = -1 to 1. Values beyond the range take the end colour.' : 'Blank = the range of the data. Values beyond the range take the end colour.'),
+      ];
+    } else {
+      // Groups: a palette, or a colour per group.
+      const levels = levelsOf(this.schema(owner.layer.dataset), owner.mapping.col);
+      let swatches = null;
+      if (pal.name === 'manual') {
+        pal.manual = pal.manual || {};
+        levels.forEach((lv, j) => { if (!pal.manual[lv]) pal.manual[lv] = DEFAULT_SWATCHES[j % DEFAULT_SWATCHES.length]; });
+        swatches = h('div.swatches', levels.map((lv) => h('div.swatch',
+          colour(pal.manual[lv], (v) => { pal.manual[lv] = v; this.changed(); }, { k: `sw-${lv}` }), h('span', lv))));
+      }
+      colours = [
+        this.fmtRow('Palette', bindSelect(pal, 'name', PALETTES.filter(([k]) => !['gradient', 'gradient2'].includes(k)), ch(true), { k: 'palette' })),
+        pal.name === 'viridis' ? this.fmtRow('Scheme', bindSelect(pal, 'option', VIRIDIS_OPTIONS, ch(), { k: 'pal-option' }), bindCheck(pal, 'reverse', 'reverse', ch(), { k: 'pal-reverse' })) : null,
+        swatches,
+      ];
     }
     return h('div.fmt-cols',
-      h('div.fmt-col',
-        h('h4', 'Colours'),
-        this.fmtRow('Palette', bindSelect(pal, 'name', PALETTES, ch(true), { k: 'palette' })),
-        owner ? swatches : h('div.hint', 'No layer maps Colour or Fill to a column. Fixed colours are set in each layer.')),
+      h('div.fmt-col', h('h4', 'Colours'), colours),
       h('div.fmt-col',
         h('h4', 'Legend'),
         this.fmtRow('Position', bindSelect(g.theme, 'legend', [['right', 'Right'], ['top', 'Top'], ['bottom', 'Bottom'], ['left', 'Left'], ['none', 'Hidden']], ch(), { k: 'legend' })),

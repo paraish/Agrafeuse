@@ -229,7 +229,10 @@ export class App {
     const t = TESTS[a.test];
     let opts;
     let template = 'scatter_dot';
-    if (t.inputs.x) {
+    if (a.test === 'cormatrix') {
+      opts = { dataset: a.dataset, columns: a.columns || [], method: a.options?.method, adjust: a.options?.adjust };
+      template = 'cor_heatmap';
+    } else if (t.inputs.x) {
       opts = { dataset: a.dataset, x: a.x, y: a.y };
       template = a.test === 'correlation' ? 'xy' : 'blank';
     } else if (t.inputs.layout && a.layout === 'columns') {

@@ -133,6 +133,14 @@ export function stepFields(step, i, ctx) {
         pick('columns', 'Count rows for each combination of'),
         bindCheck(step, 'sort', 'Largest counts first', ch(), { k: k('sort') }),
       ];
+    case 'correlate':
+      return [
+        field('Columns', multiCheck(cols, step.columns, (v) => { step.columns = v; ctx.changed(); }, { k: k('columns') }), { hint: 'Nothing ticked = every number column.' }),
+        h('div.row2',
+          field('Method', bindSelect(step, 'method', [['pearson', "Pearson's r"], ['spearman', "Spearman's rho"], ['kendall', "Kendall's tau"]], ch(), { k: k('method') })),
+          field('Adjust P values', bindSelect(step, 'adjust', [['none', 'No'], ['holm', 'Holm'], ['bonferroni', 'Bonferroni'], ['fdr', 'False discovery rate']], ch(), { k: k('adjust') }))),
+        field('Pairs', bindSelect(step, 'triangle', [['full', 'Both ways round (a full square)'], ['half', 'Each pair once (a triangle)']], ch(), { k: k('triangle') })),
+      ];
     case 'group_by':
       return [pick('columns', 'Group by')];
     case 'ungroup':

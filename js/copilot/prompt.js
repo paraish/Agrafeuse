@@ -137,6 +137,14 @@ export function predictSchema(project, id, schemaOf) {
       }
       case 'count': cols = [...cols.filter((c) => (st.columns || []).includes(c.name) || (grouped || []).includes(c.name)), { name: 'n', type: 'numeric' }]; break;
       case 'distinct': if (st.columns?.length && !st.keep_all) cols = cols.filter((c) => st.columns.includes(c.name)); break;
+      case 'correlate': {
+        const picked = st.columns?.length ? st.columns : cols.filter((c) => c.type === 'numeric').map((c) => c.name);
+        cols = [{ name: 'column1', type: 'factor', levels: picked }, { name: 'column2', type: 'factor', levels: picked },
+          ...['r', 'lower', 'upper', 'p', 'p_adjusted', 'n'].map((n) => ({ name: n, type: 'numeric' })),
+          { name: 'label', type: 'character' }, { name: 'label_stars', type: 'character' }];
+        grouped = null;
+        break;
+      }
       case 'pivot_wider': case 'transpose': return null;
       default: // filter, arrange, slice, drop_na, reorder: the same columns
     }
