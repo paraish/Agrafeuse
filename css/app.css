@@ -291,6 +291,23 @@ details.about p { margin: 8px 0 0; }
 .sheet .col-grip:hover { color: var(--accent); }
 @media (hover: none) { .sheet .col-grip { opacity: 0.6; } }
 .grid.col-dragging, .grid.col-dragging * { cursor: grabbing !important; }
+.sheet td.formula { background: color-mix(in srgb, var(--accent) 6%, var(--panel)); color: var(--muted); cursor: default; }
+.sheet th.colhead.formula .colname { color: var(--accent); }
+.fx-mark { font-family: Georgia, "Times New Roman", serif; font-style: italic; }
+.sheet .formula-text { max-width: 114px; font-family: var(--mono); font-size: 11px; color: var(--accent); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; height: 22px; line-height: 22px; padding: 0 2px; cursor: pointer; }
+.sheet .formula-text:hover { text-decoration: underline; }
+.sheet .col-fx { position: absolute; right: 3px; top: 4px; width: 18px; height: 18px; padding: 0; border: 1px solid var(--border-strong); border-radius: 4px; background: var(--panel); color: var(--accent); font: italic 12px/16px Georgia, "Times New Roman", serif; cursor: pointer; opacity: 0; }
+.sheet th.colhead:hover .col-fx { opacity: 1; }
+.sheet .col-fx:hover { background: var(--accent-weak); }
+@media (hover: none) { .sheet .col-fx { opacity: 0.7; } }
+.sheet th.colhead:not(.ghost):not(.formula):not(.rowname-head) .colname { padding-right: 20px; }
+.sheet .col-new-fx { display: block; font-size: 11.5px; height: 22px; line-height: 22px; padding: 0 2px; color: var(--accent); text-align: left; }
+.formula-msg .message { margin: 0 0 8px; }
+.fx-dialog { display: flex; flex-direction: column; gap: 8px; min-width: min(520px, 80vw); }
+.fx-dialog > .hint { margin: 0; }
+.fx-extra:empty { display: none; }
+.fx-preview { font-size: 13px; min-height: 22px; }
+.fx-preview code { font-family: var(--mono); font-size: 12px; }
 .col-drop { position: absolute; width: 3px; background: var(--accent); z-index: 6; pointer-events: none; border-radius: 2px; }
 .sheet th.colhead:not(.ghost):not(.rowname-head) .colname { cursor: text; border-radius: 4px; }
 .sheet th.colhead:not(.ghost):not(.rowname-head) .colname:hover { background: var(--panel); box-shadow: inset 0 0 0 1px var(--border-strong); }

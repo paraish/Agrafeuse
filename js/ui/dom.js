@@ -128,6 +128,7 @@ const ICONS = {
   menu: '<circle cx="12" cy="5" r="1.2"/><circle cx="12" cy="12" r="1.2"/><circle cx="12" cy="19" r="1.2"/>',
   arrowRight: '<path d="M5 12h14m-5-5 5 5-5 5"/>',
   arrowLeft: '<path d="M19 12H5m5-5-5 5 5 5"/>',
+  fx: '<path d="M8 20c2 0 2.6-1.4 3-4l1.6-9c.4-2.4 1.2-3.5 3.4-3.5M7 10h8"/><path d="m15 14 5 6m0-6-5 6"/>',
   send: '<path d="M4 12 20 4l-6 16-3-7z"/><path d="m11 13 9-9"/>',
   stop: '<rect x="6" y="6" width="12" height="12" rx="2"/>',
   settings: '<circle cx="12" cy="12" r="3"/><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5.3 5.3l2.1 2.1M16.6 16.6l2.1 2.1M5.3 18.7l2.1-2.1M16.6 7.4l2.1-2.1"/>',

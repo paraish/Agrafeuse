@@ -5,6 +5,8 @@
 // Column names are the header row; row names are an optional first column
 // (index -1 here), e.g. subject IDs, which R gets as a "row_name" column.
 // Columns move by dragging the grip in their header, or with Ctrl+Shift+arrows.
+// Calculated columns (col.formula) show values R works out (this.computed);
+// they cannot be typed into, and their header opens their formula (onFormula).
 import { h, clear } from './dom.js';
 import { parseDelimited, isMissing, parseNumber } from '../codegen/data.js';
 
@@ -14,10 +16,13 @@ const TYPE_OPTIONS = [['auto', 'Auto'], ['number', 'Number'], ['text', 'Text']];
 const RN = -1; // the row-names column
 
 export class Grid {
-  constructor(table, { onChange, onSelect } = {}) {
+  constructor(table, { onChange, onSelect, onFormula } = {}) {
     this.t = table;
     this.onChange = onChange || (() => {});
     this.onSelect = onSelect || (() => {});
+    this.onFormula = onFormula || (() => {});
+    this.computed = {}; // calculated column name -> values (text), from R
+    this.computedTypes = {};
     this.sel = { r: 0, c: 0, r2: 0, c2: 0 };
     this.editing = null;
     this.dragging = false;
@@ -67,12 +72,16 @@ export class Grid {
   // ---- model access --------------------------------------------------------------------
   get ncol() { return this.t.columns.length; }
   get nrowShown() { return Math.max(this.t.rows.length + 25, 40); }
+  isFormula(c) { return c >= 0 && this.t.columns[c]?.formula != null; }
+
   get(r, c) {
     if (c === RN) return r < 0 ? 'Row names' : this.t.rowNames?.[r] ?? '';
     if (r < 0) return this.t.columns[c]?.name ?? '';
+    if (this.isFormula(c)) return this.computed[this.t.columns[c].name]?.[r] ?? '';
     return this.t.rows[r]?.[c] ?? '';
   }
   set(r, c, v) {
+    if (r >= 0 && this.isFormula(c)) return; // calculated: R fills it in
     if (c === RN) {
       if (r < 0) return; // the "Row names" heading is fixed
       this.t.rowNames = this.t.rowNames || [];
@@ -98,6 +107,7 @@ export class Grid {
   // Which columns hold numbers (for right-alignment and flagging bad cells).
   computeTypes() {
     this.types = this.t.columns.map((col, j) => {
+      if (col.formula != null) return this.computedTypes[col.name] === 'numeric' || !this.computedTypes[col.name] ? 'numeric' : 'text';
       if (col.type === 'number') return 'numeric';
       if (col.type === 'text') return 'text';
       for (const row of this.t.rows) {
@@ -140,7 +150,14 @@ export class Grid {
       const ghost = c === this.ncol;
       const selected = r0 === -1 && c >= c0 && c <= c1;
       const col = this.t.columns[c];
-      const typeSel = ghost ? null : h('select.coltype', {
+      const formula = !ghost && col.formula != null;
+      const typeSel = ghost ? h('button.link.colsub.col-new-fx', {
+        type: 'button', title: 'Add a column calculated from the others (like dplyr\'s mutate)',
+        onmousedown: (e) => { e.stopPropagation(); e.preventDefault(); this.onFormula(null); },
+      }, 'ƒ calculated') : formula ? h('div.colsub.formula-text', {
+        title: `Calculated: ${col.formula}\nClick to change the formula`,
+        onmousedown: (e) => { e.stopPropagation(); e.preventDefault(); this.onFormula(c); },
+      }, `= ${col.formula}`) : h('select.coltype', {
         title: 'Column type: Auto decides from the values',
         'aria-label': `Type of column ${col.name}`,
         onmousedown: (e) => e.stopPropagation(),
@@ -148,9 +165,14 @@ export class Grid {
       }, TYPE_OPTIONS.map(([v, l]) => h('option', { value: v, selected: col.type === v }, l)));
       headCells.push(h('th.colhead', {
         'data-r': -1, 'data-c': c,
-        class: [ghost ? 'ghost' : '', selected ? 'sel' : '', this.types[c] === 'numeric' ? 'num' : ''].join(' '),
-      }, ghost ? null : h('span.col-grip', { title: 'Drag to move this column', 'aria-hidden': 'true' }, '⋮⋮'), h('div.colname', { title: ghost ? 'Add a column' : 'Click to rename' },
-        ghost ? '+ new column' : (col.name || `Column ${c + 1}`)), typeSel));
+        class: [ghost ? 'ghost' : '', selected ? 'sel' : '', this.types[c] === 'numeric' ? 'num' : '', formula ? 'formula' : ''].join(' '),
+      }, ghost ? null : h('span.col-grip', { title: 'Drag to move this column', 'aria-hidden': 'true' }, '⋮⋮'),
+      ghost || formula ? null : h('button.col-fx', {
+        type: 'button', title: 'Calculate a new column from this one (log, ratio, % of mean…)', tabindex: -1,
+        onmousedown: (e) => { e.stopPropagation(); e.preventDefault(); this.onFormula(null, c); },
+      }, 'ƒ'),
+      h('div.colname', { title: ghost ? 'Add a column' : formula ? 'Click to change the formula or the name' : 'Click to rename' },
+        formula ? h('span.fx-mark', 'ƒ ') : null, ghost ? '+ new column' : (col.name || `Column ${c + 1}`)), typeSel));
     }
 
     const body = [h('tr.spacer', h('td', { colspan: ncolShown + 2, style: { height: `${first * ROW_H}px` } }))];
@@ -165,11 +187,12 @@ export class Grid {
       ];
       const row = this.t.rows[r];
       for (let c = 0; c < ncolShown; c++) {
-        const v = row?.[c] ?? '';
+        const v = this.isFormula(c) ? this.get(r, c) : row?.[c] ?? '';
         const cls = [];
         if (r >= r0 && r <= r1 && c >= c0 && c <= c1) cls.push('sel');
         if (r === this.sel.r && c === this.sel.c) cls.push('active');
         if (c === this.ncol) cls.push('ghost');
+        else if (this.isFormula(c)) cls.push('formula', this.types[c] === 'numeric' ? 'num' : '');
         else if (this.types[c] === 'numeric') {
           cls.push('num');
           if (this.t.columns[c].type === 'number' && !isMissing(v) && parseNumber(v) === undefined) cls.push('bad');
@@ -216,6 +239,7 @@ export class Grid {
   startEdit(initial = null) {
     const { r, c } = this.sel;
     if (r < 0 && c === RN) return;
+    if (this.isFormula(c)) { this.onFormula(c); return; } // calculated: change its formula instead
     this.editing = { r, c, quick: initial !== null };
     this.editor.value = initial !== null ? initial : this.get(r, c);
     this.editor.hidden = false;

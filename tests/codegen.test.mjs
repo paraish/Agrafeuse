@@ -38,6 +38,16 @@ for (const t of ['descriptive', 'normality', 'ttest_unpaired', 'ttest_paired', '
   add(t, plant, wideOpts(t));
 }
 add('one_sample', plant, { layout: 'columns', columns: ['Control'] }, { mu: 5 });
+// Calculated columns (mutate), used by a test, a graph and a transform; one in the middle, one at the end.
+const calc = newDataTable(p, { name: 'Calculated', columns: [{ name: 'dose', type: 'auto' }, { name: 'log dose', type: 'auto', formula: 'log10(dose)' },
+  { name: 'response', type: 'auto' }, { name: 'group', type: 'text' }, { name: 'per dose', formula: 'response / dose' }, { name: 'high', formula: 'ifelse(response > 20, "high", "low")' }],
+rows: Array.from({ length: 10 }, (_, i) => [String(2 ** i), '', String(10 + 2 * i + (i % 3)), i % 2 ? 'A' : 'B']), rowNames: [] });
+add('correlation', calc, { x: 'log dose', y: 'response' });
+add('ttest_unpaired', calc, { layout: 'long', y: 'per dose', group: 'high', groups: ['high', 'low'] });
+newGraph(p, { name: 'Calculated graph', layers: [{ id: 'l1', geom: 'point', dataset: calc.id, aes: { x: { mode: 'col', col: 'log dose' }, y: { mode: 'col', col: 'per dose' } } }] });
+newTransform(p, calc.id, [{ type: 'filter', column: 'log dose', op: '>', value: '1' }], 'Calculated filtered');
+newDataTable(p, { name: 'Only calculated', columns: [{ name: 'one', formula: '1:3' }], rows: [['x'], ['y'], ['z']], rowNames: ['a', 'b', 'c'] });
+
 // Correlation matrices: every number column, some columns, other methods.
 add('cormatrix', plant, { columns: [] });
 add('cormatrix', dnase, { columns: ['concentration', 'density'] }, { method: 'spearman', adjust: 'holm' });

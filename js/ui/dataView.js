@@ -1,8 +1,9 @@
 // A data table: the spreadsheet plus import and shortcuts to the next steps,
 // with a dplyr pipeline panel on the right whose result can be shown instead
 // of the grid.
-import { h, fill, icon, pickFile } from './dom.js';
-import { button, toast, codeBlock, section } from './widgets.js';
+import { h, fill, icon, pickFile, debounce } from './dom.js';
+import { button, toast, codeBlock, section, messageBox } from './widgets.js';
+import { formulaDialog } from './formulaDialog.js';
 import { Grid } from './grid.js';
 import { parseDelimited, tableFromRows, inferColumns, dataCode } from '../codegen/data.js';
 import { newTransform, uniqueName } from '../model.js';
@@ -15,17 +16,78 @@ export class DataView {
     this.item = item;
     this.el = h('div.view.data-view');
     this.mode = 'data';
+    this.raw = {};
+    this.refreshFormulas = debounce(() => this.updateFormulas(), 300);
     this.render();
   }
 
   destroy() {
+    this.refreshFormulas.cancel();
     this.grid?.destroy();
     this.pipe?.destroy();
   }
 
   onChange(e) {
-    if (e.id === this.item.id) this.updateInfo();
+    if (e.id === this.item.id) { this.updateInfo(); this.refreshFormulas(); }
     this.pipe?.onChange(e);
+  }
+
+  // ---- calculated columns --------------------------------------------------------------------
+
+  hasFormulas() {
+    return this.item.columns.some((c) => c.formula != null);
+  }
+
+  // The calculated columns' values, from R (shown rounded; kept in full for "turn into values").
+  async updateFormulas() {
+    if (!this.hasFormulas()) { fill(this.formulaMsg); return; }
+    const res = await this.app.engine.formulaValues(this.item.id).catch((e) => ({ ok: false, error: e.message }));
+    if (!this.grid) return;
+    this.raw = res.ok ? res.values : {};
+    const show = (v) => (v !== '' && Number.isFinite(Number(v)) && String(v).length > 9 ? String(Number(Number(v).toPrecision(6))) : v);
+    this.grid.computed = Object.fromEntries(Object.entries(this.raw).map(([k, vals]) => [k, vals.map(show)]));
+    this.grid.computedTypes = res.types || {};
+    this.grid.computeTypes();
+    this.grid.render();
+    fill(this.formulaMsg, res.ok ? null : messageBox('error', `A calculated column has a problem: ${String(res.error).split('\n').slice(0, 3).join(' ')}`));
+  }
+
+  // Add a calculated column (after `source`), or change the one at `index`.
+  async formula(index = null, source = null) {
+    const it = this.item;
+    if (source == null && index == null) {
+      const { c0 } = this.grid.rect();
+      source = c0 >= 0 && c0 < it.columns.length ? c0 : null;
+    }
+    const res = await formulaDialog(this.app, it, { index, source });
+    if (!res) return;
+    if (res.action === 'remove') {
+      it.columns.splice(index, 1);
+      for (const row of it.rows) if (row.length > index) row.splice(index, 1);
+    } else if (res.action === 'values') {
+      // Keep what R worked out, as ordinary cells.
+      const col = it.columns[index];
+      const vals = this.raw[col.name] || [];
+      delete col.formula;
+      col.type = 'auto';
+      vals.forEach((v, r) => {
+        while (it.rows.length <= r) it.rows.push([]);
+        const row = it.rows[r];
+        while (row.length < index) row.push('');
+        row[index] = v;
+      });
+    } else if (index != null) {
+      Object.assign(it.columns[index], { name: res.name, formula: res.formula });
+    } else {
+      const at = source != null ? source + 1 : it.columns.length;
+      it.columns.splice(at, 0, { name: res.name, type: 'auto', formula: res.formula });
+      for (const row of it.rows) if (row.length > at) row.splice(at, 0, '');
+    }
+    this.app.store.change(it.id, { structural: true });
+    this.grid.computeTypes();
+    this.grid.render();
+    this.updateInfo();
+    this.refreshFormulas();
   }
 
   // Show the grid ('data') or the pipeline's result ('result').
@@ -48,7 +110,9 @@ export class DataView {
     this.pipe?.destroy();
     this.grid = new Grid(it, {
       onChange: ({ structural }) => this.app.store.change(it.id, { structural }),
+      onFormula: (index, source) => this.formula(index, source),
     });
+    this.formulaMsg = h('div.formula-msg');
     this.pipe = new PipePanel(this.app, it, { onShow: (mode) => this.show(mode) });
     const tab = (mode, label) => h('button', {
       type: 'button', role: 'tab', 'data-mode': mode, 'data-k': `tab-${mode}`, onclick: () => this.show(mode),
@@ -63,6 +127,7 @@ export class DataView {
       button('Insert row', () => this.grid.insertRow(), { title: 'Insert a row above the selection' }),
       button('Delete rows', () => this.grid.deleteRows(), { title: 'Delete the selected rows' }),
       button('Insert column', () => this.grid.insertColumn(), { title: 'Insert a column left of the selection' }),
+      button('Calculated column', () => this.formula(), { iconName: 'fx', k: 'add-formula', title: 'Add a column worked out from the others: log, ratio, % of the mean, or any R expression (like dplyr\'s mutate)' }),
       button('Delete columns', () => this.grid.deleteColumns(), { title: 'Delete the selected columns' }),
       button('', () => this.grid.moveSelection(-1), { iconName: 'arrowLeft', k: 'col-left', title: 'Move the selected columns left (Ctrl+Shift+←). You can also drag a column by the ⋮⋮ in its header.' }),
       button('', () => this.grid.moveSelection(1), { iconName: 'arrowRight', k: 'col-right', title: 'Move the selected columns right (Ctrl+Shift+→). You can also drag a column by the ⋮⋮ in its header.' }),
@@ -74,7 +139,7 @@ export class DataView {
       h('div.hintbar', icon('info'), h('span', 'Type or paste (Ctrl+V) straight from Excel. The top row holds the column names (click one to rename it; drag the ⋮⋮ next to it to move the column; the menu under it sets its type). Row names on the left are optional labels such as subject IDs. Each column can be a group, or use one row per observation with columns for the groups (long format).')),
       toolbar,
       h('div.data-body',
-        h('div.data-main', this.tabs, this.gridHost, this.pipe.resultEl),
+        h('div.data-main', this.tabs, this.formulaMsg, this.gridHost, this.pipe.resultEl),
         this.pipe.el),
       this.info,
       section('R code for this table', h('div', { 'data-code': '' }), { k: 'code', open: false }));
@@ -83,6 +148,7 @@ export class DataView {
     });
     this.updateInfo();
     this.show(this.pipe.open && this.pipe.steps.length ? this.mode : 'data');
+    this.refreshFormulas();
   }
 
   updateInfo() {
@@ -90,8 +156,8 @@ export class DataView {
     const bad = columns.filter((c) => c.bad);
     fill(this.info, 
       h('span', `${nrow} rows × ${columns.length} columns`),
-      ...columns.map((c) => h('span.colinfo', { title: c.type === 'numeric' ? 'Numbers' : 'Text / groups' },
-        h('b', c.name), c.type === 'numeric' ? ' 123' : ' abc')),
+      ...columns.map((c) => h('span.colinfo', { title: c.formula != null ? `Calculated: ${c.formula}` : c.type === 'numeric' ? 'Numbers' : 'Text / groups' },
+        h('b', c.name), c.formula != null ? ' ƒ' : c.type === 'numeric' ? ' 123' : ' abc')),
       bad.length ? h('span.warn', `Not numbers (treated as missing): ${bad.map((c) => `${c.name} (${c.bad})`).join(', ')}`) : null);
   }
 

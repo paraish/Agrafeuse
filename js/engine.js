@@ -220,10 +220,16 @@ export class Engine extends EventTarget {
     const it = getItem(this.getProject(), id);
     if (!it) return null;
     if (it.kind === 'data') {
+      // Calculated columns' types and values are known once R has run the table.
+      const r = this.results.get(id);
+      const key = `${it.rev}:${r?.version || ''}`;
       const cached = this.dataSchemas.get(id);
-      if (cached && cached.rev === it.rev) return cached.schema;
+      if (cached && cached.key === key) return cached.schema;
       const schema = dataSchema(it);
-      this.dataSchemas.set(id, { rev: it.rev, schema });
+      if (r?.ok && r.schema) {
+        schema.columns = schema.columns.map((c) => (c.formula ? { ...(r.schema.columns.find((x) => x.name === c.name) || c), formula: true } : c));
+      }
+      this.dataSchemas.set(id, { key, schema });
       return schema;
     }
     return this.results.get(id)?.schema || null;
@@ -332,6 +338,34 @@ export class Engine extends EventTarget {
         failed: out.failed ? run[out.failed - 1].index : null, error: out.error,
       };
     }, full ? null : `pipe:${id}`);
+  }
+
+  // The values of a table's calculated columns, worked out by R: { ok, values: { name: [text…] }, error }.
+  formulaValues(id) {
+    return this.enqueue(async () => {
+      const r = await this.ensureNow(id);
+      if (!r.ok) return { ok: false, error: r.error };
+      const item = getItem(this.getProject(), id);
+      const names = (item.columns || []).filter((c) => c.formula != null).map((c) => c.name);
+      if (!names.length) return { ok: true, values: {} };
+      const res = await this.run(`ag_table_json(${item.rname}[${rstrvec(names)}])`);
+      if (!res.ok) return { ok: false, error: res.error };
+      const t = JSON.parse(res.value);
+      const values = {};
+      t.columns.forEach((c, j) => { values[c.name] = t.rows.map((row) => row[j]); });
+      return { ok: true, values, types: Object.fromEntries(t.columns.map((c) => [c.name, c.type])) };
+    }, `formulas:${id}`);
+  }
+
+  // Try an R expression as a new column of a table: the first values, or the error.
+  tryFormula(id, expr, n = 8) {
+    return this.enqueue(async () => {
+      const r = await this.ensureNow(id);
+      if (!r.ok) return { ok: false, error: r.error };
+      const item = getItem(this.getProject(), id);
+      const res = await this.run(`local({ .v <- dplyr::mutate(${item.rname}, .ag_new = ${expr})$.ag_new; jsonlite::toJSON(list(values = utils::head(ag_cell_text(.v, 6), ${n}), type = ag_col_type(.v)), auto_unbox = TRUE) })`);
+      return res.ok ? { ok: true, ...JSON.parse(res.value) } : { ok: false, error: res.error };
+    });
   }
 
   // Draw a graph as SVG for the on-screen preview. Repeated requests for the

@@ -13,6 +13,7 @@ export const ACTION_GUIDE = `Answer with ONE JSON object and nothing else:
 {"reply": "<short message for the user>", "actions": [<actions>]}
 Use "actions": [] when the user only asks a question. Use exact item and column names from the project.
 Actions ("graph"/"table"/"dataset" may be left out to mean the item that is open or was just made):
+{"do":"add_column","table":T,"name":N,"expr":"R expression","after":C} a calculated column in a data table (like mutate), e.g. "log10(weight)"
 {"do":"pipeline_step","table":T,"step":STEP} add a dplyr step to a data table's own pipeline (shown next to it), or to a transform's steps
 {"do":"new_transform","from":D,"name":N,"steps":[STEP,...]} make a new dataset from another one
 {"do":"new_analysis","test":TEST,"dataset":D,"y":C,"group":C, plus "subject":C | "factorB":C | "x":C | "fixed":[C] | "random":[C] when the test needs them, "groups":[two levels] for two-group tests}
@@ -72,6 +73,7 @@ const squash = (s) => String(s ?? '').toLowerCase().replace(/[^a-z0-9]/g, '');
 const ACTION_ALIASES = {
   graph: 'new_graph', make_graph: 'new_graph', create_graph: 'new_graph', add_graph: 'new_graph', plot: 'new_graph', new_plot: 'new_graph', create_plot: 'new_graph', make_plot: 'new_graph', chart: 'new_graph',
   analysis: 'new_analysis', analyse: 'new_analysis', analyze: 'new_analysis', run_analysis: 'new_analysis', run_test: 'new_analysis', test: 'new_analysis', statistics: 'new_analysis', stats: 'new_analysis', add_analysis: 'new_analysis', create_analysis: 'new_analysis',
+  calculate_column: 'add_column', calculated_column: 'add_column', new_column: 'add_column', add_calculated_column: 'add_column', mutate_column: 'add_column', compute_column: 'add_column', derive_column: 'add_column',
   step: 'pipeline_step', add_step: 'pipeline_step', pipeline: 'pipeline_step', add_pipeline_step: 'pipeline_step', dplyr: 'pipeline_step',
   transform: 'new_transform', create_transform: 'new_transform', add_transform: 'new_transform', new_dataset: 'new_transform',
   compare: 'compare_groups', add_compare: 'compare_groups', compare_means: 'compare_groups', stat_compare_means: 'compare_groups', p_values: 'compare_groups', add_p_values: 'compare_groups', brackets: 'compare_groups',
@@ -199,6 +201,12 @@ export function normalizeAction(raw) {
       a.table = pick('table', 'dataset', 'data', 'source');
       a.step = normalizeStep(a.step ?? a.steps?.[0] ?? null);
       break;
+    case 'add_column':
+      a.table = pick('table', 'dataset', 'data');
+      a.name = pick('name', 'column', 'new_column', 'new_name');
+      a.expr = pick('expr', 'formula', 'expression', 'calculation', 'code');
+      a.after = pick('after', 'source', 'from');
+      break;
     case 'new_transform':
       a.from = pick('from', 'dataset', 'data', 'source', 'table');
       a.steps = (asList(a.steps) || []).map(normalizeStep);
@@ -262,6 +270,7 @@ const list = (v) => (Array.isArray(v) ? v.join(', ') : v ?? '');
 export function describeAction(a) {
   const on = (key, fallback) => (a[key] ? `"${a[key]}"` : fallback);
   switch (a.do) {
+    case 'add_column': return `Add the calculated column "${a.name}" = ${a.expr} to ${on('table', 'the open table')}`;
     case 'pipeline_step': return `Add ${stepText(a.step)} to the pipeline of ${on('table', 'the open table')}`;
     case 'new_transform': return `Make a new dataset${a.name ? ` "${a.name}"` : ''} from ${on('from', 'the open dataset')}: ${(a.steps || []).map(stepText).join(', then ') || 'a copy'}`;
     case 'new_analysis': {
@@ -458,7 +467,10 @@ function made(ctx, item, requested) {
 // Column names as the dataset spells them (fixing case); unknown ones are an error
 // when the dataset's columns are known.
 function columnFixer(ctx, datasetId) {
-  const cols = ctx.app.engine.schemaOf(datasetId)?.columns?.map((c) => c.name);
+  // A data table's columns as they are in the working copy (calculated columns a plan added count too).
+  const inCopy = getItem(ctx.p, datasetId);
+  const known = ctx.app.engine.schemaOf(datasetId)?.columns?.map((c) => c.name);
+  const cols = inCopy?.kind === 'data' ? [...new Set([...(known || []), ...inCopy.columns.map((c) => c.name)])] : known;
   return (name, label = 'column') => {
     if (name == null || name === '') return name;
     if (!cols) return String(name);
@@ -543,6 +555,22 @@ const HANDLERS = {
     const it = findItem(ctx, a.item, ['data', 'transform', 'analysis', 'graph']);
     if (!it) throw new Skip(`There is no item called "${a.item}".`);
     ctx.show = it.id;
+  },
+
+  add_column(ctx, a) {
+    const t = target(ctx, a.table || a.dataset, ['data'], 'data table');
+    const name = String(a.name ?? '').trim();
+    const expr = String(a.expr ?? '').trim();
+    if (!name) throw new Skip('Give the new column a name.');
+    if (!expr) throw new Skip('Say how to calculate it (an R expression of the columns).');
+    if (t.columns.some((c) => c.name === name)) throw new Skip(`"${name}" is already a column of "${t.name}".`);
+    const names = t.columns.map((c) => c.name);
+    const after = a.after ? names.indexOf(closest(a.after, names)) : -1;
+    const at = after >= 0 ? after + 1 : t.columns.length;
+    t.columns.splice(at, 0, { name, type: 'auto', formula: expr });
+    for (const row of t.rows) if (row.length > at) row.splice(at, 0, '');
+    ctx.show = t.id;
+    ctx.last.data = t.id;
   },
 
   pipeline_step(ctx, a) {

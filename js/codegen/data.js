@@ -25,11 +25,20 @@ export function usedRowCount(table) {
 
 // The columns R will see: names made unique, types decided, values parsed.
 // type 'auto' becomes numeric when every non-empty cell is a number.
+// Calculated columns (col.formula, an R expression of the other columns) have
+// no values here: R works them out (formula: true; their type is a guess).
 export function inferColumns(table) {
   const nrow = usedRowCount(table);
   const out = [];
   const seen = new Set();
   table.columns.forEach((col, j) => {
+    if (col.formula != null) {
+      let name = String(col.name ?? '').trim() || `V${j + 1}`;
+      for (let i = 2; seen.has(name); i++) name = `${col.name}_${i}`;
+      seen.add(name);
+      out.push({ name, index: j, type: 'numeric', values: [], levels: [], bad: 0, missing: 0, formula: String(col.formula) });
+      return;
+    }
     const raw = [];
     for (let r = 0; r < nrow; r++) raw.push((table.rows[r] || [])[j] ?? '');
     const hasData = raw.some((v) => !isMissing(v));
@@ -76,6 +85,7 @@ export function dataSchema(table) {
     columns: columns.map((c) => ({
       name: c.name,
       type: c.type,
+      ...(c.formula != null ? { formula: true } : {}),
       levels: c.type === 'factor' ? c.levels : (new Set(c.values.filter((v) => v !== null)).size <= 30
         ? [...new Set(c.values.filter((v) => v !== null))].sort((a, b) => a - b).map(String) : []),
       missing: c.missing,
@@ -84,8 +94,10 @@ export function dataSchema(table) {
 }
 
 export function dataCode(table) {
-  const { columns } = inferColumns(table);
-  if (!columns.length) return `${table.rname} <- data.frame()`;
+  const all = inferColumns(table).columns;
+  const columns = all.filter((c) => c.formula == null);
+  const calculated = all.filter((c) => c.formula != null);
+  if (!columns.length && !calculated.length) return `${table.rname} <- data.frame()`;
   const parts = columns.map((c) => {
     let vec;
     if (c.type === 'numeric') {
@@ -96,7 +108,18 @@ export function dataCode(table) {
     }
     return `  ${rsym(c.name)} = ${vec}`;
   });
-  return `${table.rname} <- data.frame(\n${parts.join(',\n')},\n  check.names = FALSE\n)`;
+  let code = columns.length
+    ? `${table.rname} <- data.frame(\n${parts.join(',\n')},\n  check.names = FALSE\n)`
+    : `${table.rname} <- data.frame(row = seq_len(${usedRowCount(table)}))`;
+  if (calculated.length) {
+    // Calculated columns: dplyr's mutate(), left to right (so one can use another), in the grid's order.
+    code += ` |>\n  mutate(\n${calculated.map((c) => `    ${rsym(c.name)} = ${c.formula.trim() || 'NA'}`).join(',\n')}\n  )`;
+    const inOrder = all.map((c) => c.name);
+    const now = [...columns.map((c) => c.name), ...calculated.map((c) => c.name)];
+    if (!columns.length) code += ' |>\n  select(-row)';
+    if (inOrder.join('\u0000') !== now.join('\u0000')) code += ` |>\n  select(${inOrder.map(rsym).join(', ')})`;
+  }
+  return code;
 }
 
 // --- CSV / TSV parsing for imports and pastes ---------------------------------

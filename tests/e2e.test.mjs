@@ -107,6 +107,36 @@ try {
   await page.keyboard.press('Control+Shift+ArrowRight');
   check(await heads() === order0, `and with Ctrl+Shift+arrow (${await heads()})`);
 
+  // Calculated columns: from a column's ƒ button, edited, turned into values, deleted.
+  await page.hover('.sheet th[data-c="0"]');
+  await page.click('.sheet th[data-c="0"] .col-fx');
+  await page.waitForSelector('.fx-dialog');
+  await page.selectOption('[data-k="fx-preset"]', 'times');
+  await page.fill('[data-k="fx-k"]', '2');
+  await page.waitForFunction(() => /First values/.test(document.querySelector('.fx-preview')?.textContent || ''), null, { timeout: 20000 });
+  check((await page.textContent('.fx-preview')).includes('20, 24, 22, 26'), 'R previews the new column\'s values');
+  await page.click('.modal button:has-text("Add column")');
+  await page.waitForFunction(() => document.querySelector('.sheet td[data-r="0"][data-c="1"]')?.textContent === '20', null, { timeout: 20000 });
+  check(await heads() === `${order0.split(',')[0]},ƒ Control × 2,${order0.split(',').slice(1).join(',')}` && (await page.textContent('.sheet td[data-r="3"][data-c="1"]')) === '26',
+    'calculated column added next to its source, with values from R');
+  const calcCode = await page.evaluate(async () => (await import('./js/codegen/data.js')).dataCode(window.agrafeuse.store.item()));
+  check(calcCode.includes('mutate(\n    `Control × 2` = Control * 2\n  )'), 'its R code is a dplyr mutate()');
+  await page.click('.sheet th[data-c="1"] .formula-text');
+  await page.waitForSelector('.fx-dialog');
+  await page.fill('[data-k="fx-expr"]', 'Control * 10');
+  await page.waitForFunction(() => /100/.test(document.querySelector('.fx-preview')?.textContent || ''), null, { timeout: 20000 });
+  await page.click('.modal button:has-text("Save")');
+  await page.waitForFunction(() => document.querySelector('.sheet td[data-r="0"][data-c="1"]')?.textContent === '100', null, { timeout: 20000 });
+  check(true, 'a calculated column\'s formula can be changed');
+  await page.click('.sheet th[data-c="1"] .formula-text');
+  await page.click('.modal button:has-text("Turn into plain values")');
+  await page.waitForTimeout(300);
+  check(!(await page.locator('.sheet th[data-c="1"].formula').count()) && (await page.textContent('.sheet td[data-r="2"][data-c="1"]')) === '110',
+    'turned into plain values');
+  await page.click('.sheet th[data-r="-1"][data-c="1"] .col-grip');
+  await page.click('button:has-text("Delete columns")');
+  check(await heads() === order0, 'and deleted');
+
   // --- wide → long -------------------------------------------------------------------------
   await page.click('button:has-text("Wide → long")');
   await settle();

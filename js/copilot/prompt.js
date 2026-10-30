@@ -6,6 +6,7 @@ import { ACTION_GUIDE } from './actions.js';
 import { TESTS } from '../codegen/stats.js';
 import { GEOMS, effectiveLayers } from '../codegen/graph.js';
 import { getItem } from '../model.js';
+import { dataSchema } from '../codegen/data.js';
 
 const MAX_LEVELS = 12;
 const MAX_COLUMNS = 30;
@@ -38,7 +39,7 @@ function describeColumns(schema, compact = false) {
   const maxCols = compact ? 12 : MAX_COLUMNS;
   const maxLevels = compact ? 5 : MAX_LEVELS;
   const cols = schema.columns.slice(0, maxCols).map((c) => {
-    if (c.type === 'numeric') return `${c.name} (number)`;
+    if (c.type === 'numeric') return `${c.name} (number${c.formula ? ', calculated' : ''})`;
     const lv = c.levels || [];
     const shown = lv.slice(0, maxLevels).join(', ');
     const what = /^row_name(_\d+)?$/.test(c.name) ? 'row names / IDs' : 'groups';
@@ -61,7 +62,16 @@ export function projectSummary(app, { shareValues = false, preview = null, compa
   const engine = app.engine;
   const open = getItem(p, app.store.selected);
   const name = (id) => getItem(p, id)?.name || '?';
-  const schemaOf = (id) => engine.schemaOf(id) || predictSchema(p, id, schemaOf);
+  // In a plan's working copy, data tables may have new calculated columns: describe them as they are there.
+  const schemaOf = (id) => {
+    const it = getItem(p, id);
+    if (it?.kind === 'data' && it !== getItem(app.store.project, id)) {
+      const known = engine.schemaOf(id);
+      const now = dataSchema(it);
+      return { ...now, columns: now.columns.map((c) => known?.columns?.find((k) => k.name === c.name) || c) };
+    }
+    return engine.schemaOf(id) || predictSchema(p, id, schemaOf);
+  };
   const lines = [`Project "${p.name}".${open ? ` Open now: ${open.kind === 'data' ? 'data table' : open.kind} "${open.name}".` : ''}`];
   const ds = p.items.filter((it) => it.kind === 'data' || it.kind === 'transform');
   if (ds.length) lines.push('Datasets:');
