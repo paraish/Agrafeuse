@@ -665,3 +665,7 @@ button.choice:hover { border-color: var(--accent); background: var(--accent-weak
   .choices, .test-list, .row2, .row3 { grid-template-columns: minmax(0, 1fr); }
   .rstatus .text { display: none; }
 }
+details.layouts { margin-top: 4px; }
+details.layouts summary { cursor: pointer; color: var(--accent); width: max-content; }
+details.layouts ul { margin: 6px 0 2px; padding-left: 18px; max-width: 900px; }
+details.layouts li { margin: 3px 0; }

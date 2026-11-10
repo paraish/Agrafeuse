@@ -20,7 +20,21 @@ const AVOID = ['c', 't', 'T', 'F', 'D', 'I', 'q', 'data', 'mean', 'sd', 'df', 'p
   'test', 'cmp', 'start', 'value', 'group', 'factor', 'levels', 'names', 'length', 'summary', 'print'];
 
 export function emptyProject(name = 'Untitled project') {
-  return { format: 'agrafeuse', version: 1, name, seq: 0, items: [] };
+  return { format: 'agrafeuse', version: PROJECT_VERSION, name, seq: 0, items: [] };
+}
+
+export const PROJECT_VERSION = 2;
+
+// Brings a project saved by an older Agrafeuse up to date.
+//   1 → 2: graphs used to start with their legend hidden; now it is automatic
+//          (hidden only when it repeats the X axis).
+export function upgradeProject(p) {
+  if (!p || (p.version || 1) >= PROJECT_VERSION) return p;
+  if ((p.version || 1) < 2) {
+    for (const it of p.items || []) if (it.kind === 'graph' && it.theme?.legend === 'none') it.theme.legend = 'auto';
+  }
+  p.version = PROJECT_VERSION;
+  return p;
 }
 
 export function getItem(project, id) {
@@ -93,7 +107,7 @@ export function newGraph(project, extra = {}) {
     kind: 'graph',
     layers: [],
     labels: { title: '', x: '', y: '', legend: '' },
-    theme: { name: 'lab', base_size: 14, legend: 'right', x_angle: 0 },
+    theme: { name: 'lab', base_size: 14, legend: 'auto', x_angle: 0 },
     palette: { name: 'default', manual: {} },
     x_scale: { trans: 'identity', min: '', max: '', from_zero: false },
     y_scale: { trans: 'identity', min: '', max: '', from_zero: false },

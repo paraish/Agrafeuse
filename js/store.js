@@ -1,5 +1,5 @@
 // App state: the project, which item is open, undo/redo, and autosave in this browser.
-import { emptyProject, getItem, clone } from './model.js';
+import { emptyProject, getItem, clone, upgradeProject } from './model.js';
 import { exampleProject } from './example.js';
 
 const AUTOSAVE_KEY = 'agrafeuse:project';
@@ -23,7 +23,7 @@ export class Store extends EventTarget {
 
   // Replace the whole project (new, opened, example, or restored).
   load(project, { keepHistory = false, select } = {}) {
-    this.project = project;
+    this.project = upgradeProject(project);
     let max = 0;
     for (const it of project.items) max = Math.max(max, it.rev || 0);
     this.revCounter = Math.max(this.revCounter, max) + 1;

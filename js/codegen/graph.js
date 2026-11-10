@@ -641,13 +641,22 @@ export function graphCode(g, ctx) {
   }
   if (labs.length) parts.push(`labs(${labs.join(', ')})`);
 
+  // Automatic legends: none for colours (or fills, symbols…) that only repeat the X axis.
+  if (T.legend === 'auto' && main?.aes?.x?.mode === 'col') {
+    const repeats = ['colour', 'fill', 'shape', 'linetype', 'alpha', 'size'].filter((k) => {
+      const maps = dataLayers.map((l) => l.aes?.[k]).filter((m) => m?.mode === 'col' && m.col);
+      return maps.length && maps.every((m) => m.col === main.aes.x.col);
+    });
+    if (repeats.length) parts.push(`guides(${repeats.map((k) => `${k} = "none"`).join(', ')})`);
+  }
+
   // Theme.
   const themeFn = (THEMES.find((t) => t[0] === T.name) || THEMES[0])[2];
   const themeArgs = [`base_size = ${rnum(T.base_size || 14)}`];
   if (ST.family) themeArgs.push(`base_family = ${rstr(ST.family)}`);
   parts.push(`${themeFn}(${themeArgs.join(', ')})`);
   const th = [];
-  if (T.legend && T.legend !== 'right') th.push(`legend.position = ${rstr(T.legend)}`);
+  if (T.legend && T.legend !== 'right' && T.legend !== 'auto') th.push(`legend.position = ${rstr(T.legend)}`);
   if (L.hide_legend_title) th.push('legend.title = element_blank()');
   // `bold: null` means "as the theme does" (the lab-figure theme has bold titles).
   const face = (st, boldByDefault) => {

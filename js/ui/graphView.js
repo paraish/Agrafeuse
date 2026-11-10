@@ -677,7 +677,8 @@ export class GraphView {
       h('div.fmt-col', h('h4', 'Colours'), colours),
       h('div.fmt-col',
         h('h4', 'Legend'),
-        this.fmtRow('Position', bindSelect(g.theme, 'legend', [['right', 'Right'], ['top', 'Top'], ['bottom', 'Bottom'], ['left', 'Left'], ['none', 'Hidden']], ch(), { k: 'legend' })),
+        this.fmtRow('Position', bindSelect(g.theme, 'legend', [['auto', 'Automatic'], ['right', 'Right'], ['top', 'Top'], ['bottom', 'Bottom'], ['left', 'Left'], ['none', 'Hidden']], ch(true), { k: 'legend' })),
+        (g.theme.legend || 'auto') === 'auto' ? h('div.hint', 'On the right, except for colours (or fills, symbols…) that only repeat the groups on the X axis.') : null,
         this.fmtRow('Title', bindInput(L, 'legend', ch(), { k: 'leglab', placeholder: '(column name)' }), bindCheck(L, 'hide_legend_title', 'hide', ch(), { k: 'hideleg' })),
         this.fmtRow('Text size', this.numberBox(leg, 'size', { k: 'leg-size', placeholder: 'size' }))));
   }

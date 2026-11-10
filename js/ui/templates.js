@@ -52,7 +52,7 @@ export function graphFromTemplate(project, key, { dataset, x, y, group, name, co
         L('mean_line', dataset, { ...ax, linewidth: fixed(0.8) }, { width: 0.45 }),
         L('errorbar', dataset, { ...ax, linewidth: fixed(0.8) }, { error: 'sem', width: 0.25 }),
       ];
-      g.theme = { name: 'lab', base_size: 14, legend: 'none', x_angle: 0 };
+      g.theme = { name: 'lab', base_size: 14, legend: 'auto', x_angle: 0 };
       g.palette = { name: 'okabe', manual: {} };
       break;
     case 'bar_points':
@@ -68,7 +68,7 @@ export function graphFromTemplate(project, key, { dataset, x, y, group, name, co
         L('boxplot', dataset, { ...ax, fill: col, alpha: fixed(0.5) }, { width: 0.6, outliers: false, staplewidth: 0.4 }),
         L('jitter', dataset, { ...ax, size: fixed(1.6) }, { width: 0.12 }),
       ];
-      g.theme = { name: 'lab', base_size: 14, legend: 'none', x_angle: 0 };
+      g.theme = { name: 'lab', base_size: 14, legend: 'auto', x_angle: 0 };
       g.palette = { name: 'okabe', manual: {} };
       break;
     case 'violin':
@@ -76,7 +76,7 @@ export function graphFromTemplate(project, key, { dataset, x, y, group, name, co
         L('violin', dataset, { ...ax, fill: col, alpha: fixed(0.6) }, { width: 0.8, trim: true, scale: 'width' }),
         L('mean_line', dataset, { ...ax, linewidth: fixed(0.8) }, { fun: 'median', width: 0.3 }),
       ];
-      g.theme = { name: 'lab', base_size: 14, legend: 'none', x_angle: 0 };
+      g.theme = { name: 'lab', base_size: 14, legend: 'auto', x_angle: 0 };
       g.palette = { name: 'okabe', manual: {} };
       break;
     case 'grouped_bars': {

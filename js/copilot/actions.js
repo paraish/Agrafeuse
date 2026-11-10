@@ -25,7 +25,7 @@ Actions ("graph"/"table"/"dataset" may be left out to mean the item that is open
 {"do":"text_box","graph":G,"text":TEXT,"x":0-1,"y":0-1}
 {"do":"labels","graph":G,"title":T,"x":T,"y":T,"legend":T}
 {"do":"axis","graph":G,"axis":"x|y","scale":"linear|log10|log2|sqrt","min":N,"max":N,"from_zero":true}
-{"do":"style","graph":G,"palette":"okabe|viridis|grey|Set1|Set2|Dark2","theme":"lab|classic|bw|minimal","legend":"right|top|bottom|none"}
+{"do":"style","graph":G,"palette":"okabe|viridis|grey|Set1|Set2|Dark2","theme":"lab|classic|bw|minimal","legend":"auto|right|top|bottom|none"}
 {"do":"open","item":NAME}
 STEP is one of:
 {"type":"filter","column":C,"op":"==|!=|>|>=|<|<=","value":V} {"type":"filter","column":C,"op":"in","values":[V]} {"type":"filter","op":"expr","expr":"R condition"}
@@ -772,7 +772,7 @@ const HANDLERS = {
       if (THEMES.some(([k]) => k === a.theme)) g.theme.name = a.theme;
       else notes.push(`no theme "${a.theme}"`);
     }
-    if (a.legend && ['right', 'top', 'bottom', 'left', 'none'].includes(a.legend)) g.theme.legend = a.legend;
+    if (a.legend && ['auto', 'right', 'top', 'bottom', 'left', 'none'].includes(a.legend)) g.theme.legend = a.legend;
     if (a.base_size) g.theme.base_size = Number(a.base_size) || g.theme.base_size;
     ctx.last.graph = g.id;
     ctx.show = g.id;

@@ -6,7 +6,8 @@ import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { exampleProject } from '../js/example.js';
 import { addFixtures } from './fixtures.mjs';
-import { getItem, newDataTable, newTransform, newAnalysis, newGraph, itemCode, topoOrder, itemPackages } from '../js/model.js';
+import { getItem, newDataTable, newTransform, newAnalysis, newGraph, itemCode, topoOrder, itemPackages, upgradeProject } from '../js/model.js';
+import { FORMULA_PRESETS } from '../js/ui/formulaDialog.js';
 import { dataSchema } from '../js/codegen/data.js';
 import { testDefaults, usesMixedModel } from '../js/codegen/stats.js';
 import { GEOMS, geomDefaults, PALETTES } from '../js/codegen/graph.js';
@@ -268,6 +269,32 @@ newGraph(p, {
   annotations: [{ id: 'c1', kind: 'compare', paired: true, subject: 'mouse', method: 'wilcox.test', comparisons: 'all', overall: true, hide_ns: true }],
 });
 
+// Automatic legends: hidden when they only repeat the X axis.
+newGraph(p, { name: 'Auto legend repeats x', theme: { name: 'lab', base_size: 14, legend: 'auto' },
+  layers: [{ id: 'l1', geom: 'boxplot', dataset: plantLong.id, aes: { x: map('group'), y: map('weight'), fill: map('group') }, params: {} },
+    { id: 'l2', geom: 'jitter', dataset: plantLong.id, aes: { x: map('group'), y: map('weight'), colour: map('group') }, params: geomDefaults('jitter') }] });
+newGraph(p, { name: 'Auto legend own column', theme: { name: 'lab', base_size: 14, legend: 'auto' },
+  layers: [{ id: 'l1', geom: 'boxplot', dataset: tooth.id, aes: { x: map('dose'), y: map('length'), fill: map('supplement'), colour: map('dose') }, params: { dodge: true } }] });
+
+// Combinations of conditions in the row names, split by the "Text:" calculated-column presets.
+const combos = [];
+for (const line of ['C4', 'C3']) for (const dose of [50, 20, 10]) for (const s of ['+', '-']) combos.push([`${line}A${dose}A${s}`, (dose / 10 + (s === '+' ? 3 : 0) + (line === 'C4' ? 1 : 0)).toFixed(2), (dose / 5 - (s === '+' ? 2 : 0)).toFixed(2)]);
+const preset = (id, c, x) => FORMULA_PRESETS.find((f) => f.id === id).expr(c, x);
+const comboTable = newDataTable(p, {
+  name: 'Combinations',
+  columns: [{ name: 'CD235', type: 'auto' }, { name: 'KDR', type: 'auto' },
+    { name: 'Line', formula: preset('chars', 'row_name', { from: 1, to: 2 }) },
+    { name: 'Dose', formula: preset('number_in', 'row_name', { nth: 2 }) },
+    { name: 'Drug', formula: preset('last', 'row_name', { n: 1 }) },
+    { name: 'Part', formula: preset('part', 'row_name', { sep: 'A', which: 3 }) },
+    { name: 'Has plus', formula: preset('contains', 'row_name', { pat: '+' }) },
+    { name: 'Line x drug', formula: preset('combine', 'Line', { others: ['Drug'] }) }],
+  rows: combos.map((r) => r.slice(1)),
+  rowNames: combos.map((r) => r[0]),
+});
+newGraph(p, { name: 'Combinations graph', theme: { name: 'lab', base_size: 14, legend: 'auto' },
+  layers: [{ id: 'l1', geom: 'point', dataset: comboTable.id, aes: { x: map('Dose'), y: map('CD235'), colour: map('Drug'), shape: map('Line') }, params: {} }] });
+
 // Schemas: data tables from JS, transforms unknown (null) like before R runs.
 const schemaOf = (id) => {
   const it = getItem(p, id);
@@ -287,6 +314,19 @@ for (const it of items.filter((x) => x.kind === 'analysis' && usesMixedModel(x))
   const opts = { mixedEngine: 'nlme' };
   jobs.push({ id: it.id, name: `${it.name} [nlme]`, kind: it.kind, rname: it.rname, code: itemCode(p, it, schemaOf, opts), packages: itemPackages(it, opts) });
 }
+// Checks on the code itself.
+const codeOf = (name) => jobs.find((j) => j.name === name)?.code || '';
+const expect = (cond, what) => { if (!cond) { console.error(`FAILED: ${what}`); process.exit(1); } };
+expect(codeOf('Auto legend repeats x').includes('guides(colour = "none", fill = "none")'), 'automatic legend hides colours that repeat X');
+expect(!codeOf('Auto legend own column').includes('guides(fill'), 'automatic legend keeps a legend for another column');
+expect(codeOf('Auto legend own column').includes('guides(colour = "none")'), 'automatic legend hides the colour that repeats X');
+expect(!codeOf('Auto legend own column').includes('legend.position'), 'automatic legend sits on the right');
+const old = upgradeProject({ format: 'agrafeuse', version: 1, items: [{ kind: 'graph', theme: { legend: 'none' } }, { kind: 'graph', theme: { legend: 'top' } }] });
+expect(old.version === 2 && old.items[0].theme.legend === 'auto' && old.items[1].theme.legend === 'top', 'old projects get automatic legends');
+const now = upgradeProject({ format: 'agrafeuse', version: 2, items: [{ kind: 'graph', theme: { legend: 'none' } }] });
+expect(now.items[0].theme.legend === 'none', 'a hidden legend chosen now stays hidden');
+console.log('code checks ok');
+
 const dir = mkdtempSync(join(tmpdir(), 'agtest-'));
 writeFileSync(join(dir, 'jobs.json'), JSON.stringify(jobs));
 writeFileSync(join(dir, 'run.R'), `

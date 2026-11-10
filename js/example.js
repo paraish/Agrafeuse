@@ -29,7 +29,7 @@ export function exampleProject() {
       { id: 'l3', geom: 'errorbar', dataset: plantLong.id, aes: { x: map('group'), y: map('weight'), linewidth: fixed(0.8) }, params: { error: 'sem', width: 0.25 } },
     ],
     labels: { title: '', x: '', y: 'Dried weight (g)', legend: '', hide_x: true },
-    theme: { name: 'lab', base_size: 14, legend: 'none' },
+    theme: { name: 'lab', base_size: 14, legend: 'auto' },
     palette: { name: 'okabe', manual: {} },
     size: { width: 4, height: 4, dpi: 300 },
     annotations: [{ id: 'a1', kind: 'brackets', analysis: anova.id, format: 'stars', hide_ns: false }],

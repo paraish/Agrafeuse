@@ -136,6 +136,20 @@ try {
   await page.click('.sheet th[data-r="-1"][data-c="1"] .col-grip');
   await page.click('button:has-text("Delete columns")');
   check(await heads() === order0, 'and deleted');
+  // Text presets: split the row names (e.g. "C4A50A+" into line, dose, treatment).
+  await page.click('[data-k="add-formula"]');
+  await page.waitForSelector('.fx-dialog');
+  await page.selectOption('[data-k="fx-preset"]', 'last');
+  await page.selectOption('[data-k="fx-col"]', 'row_name');
+  await page.waitForFunction(() => /A, B, C/.test(document.querySelector('.fx-preview')?.textContent || ''), null, { timeout: 20000 });
+  await page.selectOption('[data-k="fx-preset"]', 'part');
+  await page.fill('[data-k="fx-sep"]', ' ');
+  await page.fill('[data-k="fx-which"]', '1');
+  await page.waitForFunction(() => /Mouse, Mouse/.test(document.querySelector('.fx-preview')?.textContent || ''), null, { timeout: 20000 });
+  check((await page.inputValue('[data-k="fx-expr"]')) === 'sapply(strsplit(as.character(row_name), " ", fixed = TRUE), "[", 1)', 'text presets split the row names into parts');
+  await page.click('.modal button:has-text("Cancel")');
+  await page.click('details.layouts summary');
+  check((await page.textContent('details.layouts')).includes('C4A50A+') && await page.isVisible('details.layouts li'), 'the data layouts include one row per combination of conditions');
 
   // --- wide → long -------------------------------------------------------------------------
   await page.click('button:has-text("Wide → long")');
@@ -173,6 +187,7 @@ try {
   const styled = await page.evaluate(() => window.agrafeuse.engine.result(window.agrafeuse.store.selected).code);
   check(styled.includes('quote(underline(') && styled.includes('angle = 45'), 'underlined Y title and angled X labels');
   check(await page.locator('.preview-status .message.error').count() === 0, 'formatted graph renders');
+  check((await page.evaluate(() => window.agrafeuse.store.item().theme.legend)) === 'auto' && !styled.includes('legend.position'), 'new graphs have automatic legends');
 
   // Stretch the Y axis by dragging it, then reset it with a double-click.
   await page.waitForFunction(() => !document.querySelector('.axis-zone-v')?.hidden, null, { timeout: 30000 });
