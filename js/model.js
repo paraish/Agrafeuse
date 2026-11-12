@@ -2,7 +2,7 @@
 // graphs). Everything the app knows lives in this plain JSON object, which is
 // what gets saved inside the .RData file.
 import { toRName } from './rcode.js';
-import { dataCode } from './codegen/data.js';
+import { dataCode, dataSchema } from './codegen/data.js';
 import { transformCode } from './codegen/transform.js';
 import { analysisCode, analysisPackages, TESTS, testDefaults } from './codegen/stats.js';
 import { graphCode, graphDeps } from './codegen/graph.js';
@@ -23,15 +23,30 @@ export function emptyProject(name = 'Untitled project') {
   return { format: 'agrafeuse', version: PROJECT_VERSION, name, seq: 0, items: [] };
 }
 
-export const PROJECT_VERSION = 2;
+export const PROJECT_VERSION = 3;
 
 // Brings a project saved by an older Agrafeuse up to date.
 //   1 → 2: graphs used to start with their legend hidden; now it is automatic
 //          (hidden only when it repeats the X axis).
+//   2 → 3: a long version stacking every number column of a table, or an
+//          analysis using every column as a group, also takes columns added later.
 export function upgradeProject(p) {
   if (!p || (p.version || 1) >= PROJECT_VERSION) return p;
   if ((p.version || 1) < 2) {
     for (const it of p.items || []) if (it.kind === 'graph' && it.theme?.legend === 'none') it.theme.legend = 'auto';
+  }
+  if ((p.version || 1) < 3) {
+    const numbers = (id) => {
+      const t = (p.items || []).find((x) => x.id === id);
+      if (t?.kind !== 'data') return null;
+      try { return dataSchema(t).columns.filter((c) => c.type === 'numeric' && !c.formula).map((c) => c.name); } catch { return null; }
+    };
+    const every = (list, nums) => Array.isArray(list) && nums && nums.length >= 2 && list.length === nums.length && nums.every((n) => list.includes(n));
+    for (const it of p.items || []) {
+      const s = it.kind === 'transform' ? it.steps?.[0] : null;
+      if (s?.type === 'pivot_longer' && !s.all && every(s.cols, numbers(it.input))) s.all = true;
+      if (it.kind === 'analysis' && it.layout === 'columns' && !TESTS[it.test]?.inputs?.two && every(it.columns, numbers(it.dataset))) it.all_columns = true;
+    }
   }
   p.version = PROJECT_VERSION;
   return p;

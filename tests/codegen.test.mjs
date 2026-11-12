@@ -8,6 +8,8 @@ import { exampleProject } from '../js/example.js';
 import { addFixtures } from './fixtures.mjs';
 import { getItem, newDataTable, newTransform, newAnalysis, newGraph, itemCode, topoOrder, itemPackages, upgradeProject } from '../js/model.js';
 import { FORMULA_PRESETS } from '../js/ui/formulaDialog.js';
+import { renameInExpr, renameColumn } from '../js/rename.js';
+import { emptyProject } from '../js/model.js';
 import { dataSchema } from '../js/codegen/data.js';
 import { testDefaults, usesMixedModel } from '../js/codegen/stats.js';
 import { GEOMS, geomDefaults, PALETTES } from '../js/codegen/graph.js';
@@ -262,6 +264,35 @@ newGraph(p, {
   layers: [{ id: 'l1', geom: 'mean_bar', dataset: '', aes: {}, params: { ...geomDefaults('mean_bar'), dodge: true } }],
   annotations: [{ id: 'c1', kind: 'compare', within: true, method: 't.test.equal', comparisons: 'control', ref: 'Orange juice', p_adjust: 'BH', format: 'number', hide_ns: false, overall: false }],
 });
+// Brackets above a fixed Y axis top (with a title, with a legend on top, from an analysis).
+newGraph(p, {
+  name: 'Compare above fixed top',
+  base: { dataset: plantLong.id, aes: { x: map('group'), y: map('weight') } },
+  layers: [{ id: 'l1', geom: 'jitter', dataset: '', aes: {}, params: geomDefaults('jitter') }],
+  labels: { title: 'Fixed top', x: '', y: '', legend: '' },
+  y_scale: { trans: 'identity', min: '3', max: '6.4', from_zero: false },
+  annotations: [{ id: 'c1', kind: 'compare', method: 't.test', comparisons: 'all', format: 'p', overall: true, position: 'top-right' }],
+});
+newGraph(p, {
+  name: 'Compare above legend top',
+  base: { dataset: tooth.id, aes: { x: map('dose'), y: map('length'), fill: map('supplement') } },
+  layers: [{ id: 'l1', geom: 'mean_bar', dataset: '', aes: {}, params: { ...geomDefaults('mean_bar'), dodge: true } }],
+  theme: { name: 'bw', base_size: 12, legend: 'top' },
+  annotations: [{ id: 'c1', kind: 'compare', within: true, method: 'wilcox.test', comparisons: 'all', place: 'above' }],
+});
+newGraph(p, {
+  name: 'Brackets above from analysis',
+  layers: [{ id: 'l1', geom: 'jitter', dataset: plantLong.id, aes: { x: map('group'), y: map('weight') }, params: geomDefaults('jitter') }],
+  y_scale: { trans: 'identity', min: '', max: '6', from_zero: false },
+  annotations: [{ id: 'b1', kind: 'brackets', analysis: p.items.find((i) => i.kind === 'analysis' && i.test === 'anova1' && i.dataset === plantLong.id).id, format: 'stars' }],
+});
+newGraph(p, {
+  name: 'Compare inside fixed top',
+  base: { dataset: plantLong.id, aes: { x: map('group'), y: map('weight') } },
+  layers: [{ id: 'l1', geom: 'jitter', dataset: '', aes: {}, params: geomDefaults('jitter') }],
+  y_scale: { trans: 'identity', min: '', max: '6.4', from_zero: false },
+  annotations: [{ id: 'c1', kind: 'compare', method: 't.test', comparisons: 'all', place: 'inside' }],
+});
 newGraph(p, {
   name: 'Compare paired',
   base: { dataset: rm.id, aes: { x: map('time'), y: map('Body weight') } },
@@ -322,9 +353,41 @@ expect(!codeOf('Auto legend own column').includes('guides(fill'), 'automatic leg
 expect(codeOf('Auto legend own column').includes('guides(colour = "none")'), 'automatic legend hides the colour that repeats X');
 expect(!codeOf('Auto legend own column').includes('legend.position'), 'automatic legend sits on the right');
 const old = upgradeProject({ format: 'agrafeuse', version: 1, items: [{ kind: 'graph', theme: { legend: 'none' } }, { kind: 'graph', theme: { legend: 'top' } }] });
-expect(old.version === 2 && old.items[0].theme.legend === 'auto' && old.items[1].theme.legend === 'top', 'old projects get automatic legends');
+expect(old.version === 3 && old.items[0].theme.legend === 'auto' && old.items[1].theme.legend === 'top', 'old projects get automatic legends');
 const now = upgradeProject({ format: 'agrafeuse', version: 2, items: [{ kind: 'graph', theme: { legend: 'none' } }] });
 expect(now.items[0].theme.legend === 'none', 'a hidden legend chosen now stays hidden');
+const fixedTop = jobs.find((j) => j.name === 'Compare above fixed top');
+expect(fixedTop.code.includes('y_max = 6.4') && fixedTop.code.endsWith(`\n${fixedTop.rname} <- ag_stats_room(${fixedTop.rname})`), 'brackets get the fixed top and room above the axes');
+expect(codeOf('Compare above legend top').includes('place = "above"') && codeOf('Compare above legend top').includes('ag_stats_room('), 'brackets placed above on request');
+expect(codeOf('Brackets above from analysis').includes('y_max = 6') && codeOf('Brackets above from analysis').includes('ag_stats_room('), 'analysis brackets too');
+expect(!codeOf('Compare inside fixed top').includes('y_max') && !codeOf('Compare inside fixed top').includes('ag_stats_room('), 'inside: as before');
+expect(!codeOf('Compare paired').includes('ag_stats_room('), 'no fixed top: no room step');
+// Renaming a column carries through to everything that uses it.
+expect(renameInExpr('log10(Control) + `Control` * 2 + nchar("Control") + d$Control', 'Control', 'Ctrl') === 'log10(Ctrl) + Ctrl * 2 + nchar("Control") + d$Control', 'rename in an R expression');
+expect(renameInExpr('`Treatment 1` / mean(`Treatment 1`, na.rm = TRUE)', 'Treatment 1', 'Drug') === 'Drug / mean(Drug, na.rm = TRUE)', 'rename a backticked name');
+expect(renameInExpr('log(log) + paste(a, sep = sep)', 'log', 'lg') === 'log(lg) + paste(a, sep = sep)', 'not function or argument names');
+{
+  const q = emptyProject();
+  const t = newDataTable(q, { name: 'T', columns: [{ name: 'Control' }, { name: 'Drug' }, { name: 'Ctl x2', formula: 'Control * 2' }], rows: [['1', '2'], ['2', '3'], ['3', '5']] });
+  t.pipe = { steps: [{ type: 'filter', column: 'Control', op: '>', value: '1' }] };
+  const long = newTransform(q, t.id, [{ type: 'pivot_longer', cols: ['Control', 'Drug'], names_to: 'group', values_to: 'value' }, { type: 'filter', column: 'group', op: '!=', value: 'Control' }], 'Long');
+  const longAll = newTransform(q, t.id, [{ type: 'pivot_longer', all: true, cols: ['Control', 'Drug'], names_to: 'group', values_to: 'value' }], 'Long all');
+  const an = newAnalysis(q, 'anova1', long.id, { y: 'value', group: 'group', options: { compare: 'control', control: 'Control' } });
+  const anCols = newAnalysis(q, 'anova1', t.id, { layout: 'columns', columns: ['Control', 'Drug'], options: { compare: 'control', control: 'Control' } });
+  const gr = newGraph(q, { name: 'G', base: { dataset: longAll.id, aes: { x: map('group'), y: map('value'), colour: map('group') } }, layers: [{ id: 'l1', geom: 'jitter', dataset: '', aes: {}, params: {} }],
+    palette: { name: 'manual', manual: { Control: '#ff0000', Drug: '#0000ff' } }, annotations: [{ id: 'c', kind: 'compare', comparisons: 'control', ref: 'Control' }] });
+  const gw = newGraph(q, { name: 'W', layers: [{ id: 'l1', geom: 'point', dataset: t.id, aes: { x: map('Control'), y: map('Drug') }, params: {} }], facet: { by: '' } });
+  const changed = renameColumn(q, t, 'Control', 'Vehicle');
+  t.columns[0].name = 'Vehicle';
+  expect(t.columns[2].formula === 'Vehicle * 2' && t.pipe.steps[0].column === 'Vehicle', 'the table\'s own formulas and pipeline');
+  expect(JSON.stringify(long.steps[0].cols) === '["Vehicle","Drug"]' && long.steps[1].value === 'Vehicle', 'stacked columns, and the group they become');
+  expect(an.options.control === 'Vehicle' && JSON.stringify(anCols.columns) === '["Vehicle","Drug"]' && anCols.options.control === 'Vehicle', 'analyses (groups from a long version, and columns as groups)');
+  expect(gr.palette.manual.Vehicle === '#ff0000' && !('Control' in gr.palette.manual) && gr.annotations[0].ref === 'Vehicle', 'per-group colours and the control group on a graph');
+  expect(gw.layers[0].aes.x.col === 'Vehicle' && gw.layers[0].aes.y.col === 'Drug', 'graph mappings');
+  expect([long.id, longAll.id, an.id, anCols.id, gr.id, gw.id].every((id) => changed.includes(id)), 'every item that uses it is reported');
+  const sq = (id) => (id === t.id ? dataSchema(t) : null);
+  expect(itemCode(q, longAll, sq).includes('pivot_longer(where(is.numeric)'), 'every number column, by R');
+}
 console.log('code checks ok');
 
 const dir = mkdtempSync(join(tmpdir(), 'agtest-'));

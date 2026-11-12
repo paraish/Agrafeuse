@@ -16,6 +16,7 @@ export function autofillAnalysis(a, s) {
   const t = TESTS[a.test];
   a.layout = t.inputs.layout && nums.length >= 2 && !facs.length ? 'columns' : 'long';
   a.columns = nums;
+  a.all_columns = true;
   a.groups = a.layout === 'columns' ? nums.slice(0, 2) : [];
   a.y = nums.find((n) => !/^(id|subject)$/i.test(n)) || '';
   a.x = '';
@@ -123,9 +124,14 @@ export class StatsView {
           field('Second group', select(a.groups[1] || '', nums, (v) => { a.groups[1] = v; this.changed(); }, { placeholder: 'Choose…', k: 'g2' }))));
         if (t.inputs.subject) out.push(h('div.hint', 'Each row is one subject (the two values in a row are a pair).'));
       } else if (t.inputs.oneGroup) {
-        out.push(field('Column', select(a.columns?.[0] || '', nums, (v) => { a.columns = [v]; this.changed(); }, { placeholder: 'Choose…', k: 'col1' })));
+        out.push(field('Column', select(a.columns?.[0] || '', nums, (v) => { a.columns = [v]; a.all_columns = false; this.changed(); }, { placeholder: 'Choose…', k: 'col1' })));
       } else {
-        out.push(field('Groups (columns)', multiCheck(nums, a.columns, (v) => { a.columns = v; this.changed(); }, { k: 'cols' })));
+        if (a.all_columns) a.columns = nums;
+        out.push(field('Groups (columns)', multiCheck(nums, a.columns, (v) => {
+          a.columns = v;
+          a.all_columns = nums.length > 0 && nums.every((n) => v.includes(n)); // all ticked: new columns join in too
+          this.changed();
+        }, { k: 'cols' }), { hint: a.all_columns ? 'Every column, including ones added later.' : null }));
         if (t.inputs.subject) out.push(h('div.hint', 'Each row is one subject, measured in every column.'));
       }
       return out;

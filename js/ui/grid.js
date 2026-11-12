@@ -16,8 +16,9 @@ const TYPE_OPTIONS = [['auto', 'Auto'], ['number', 'Number'], ['text', 'Text']];
 const RN = -1; // the row-names column
 
 export class Grid {
-  constructor(table, { onChange, onSelect, onFormula } = {}) {
+  constructor(table, { onChange, onSelect, onFormula, onRename } = {}) {
     this.t = table;
+    this.onRename = onRename || (() => {});
     this.onChange = onChange || (() => {});
     this.onSelect = onSelect || (() => {});
     this.onFormula = onFormula || (() => {});
@@ -91,7 +92,12 @@ export class Grid {
       return;
     }
     while (c >= this.ncol) this.t.columns.push({ name: `Column ${this.ncol + 1}`, type: 'auto' });
-    if (r < 0) { this.t.columns[c].name = v; return; }
+    if (r < 0) {
+      const old = String(this.t.columns[c].name ?? '').trim();
+      this.t.columns[c].name = v;
+      if (old && String(v ?? '').trim() && old !== String(v).trim()) this.onRename(old, String(v).trim());
+      return;
+    }
     while (r >= this.t.rows.length) this.t.rows.push([]);
     const row = this.t.rows[r];
     while (row.length < c) row.push('');

@@ -18,7 +18,7 @@ export function exampleProject() {
     rows: PLANT.map((r) => [...r]),
   });
   const plantLong = newTransform(p, plant.id, [
-    { type: 'pivot_longer', cols: ['Control', 'Treatment 1', 'Treatment 2'], names_to: 'group', values_to: 'weight', drop_na: true },
+    { type: 'pivot_longer', all: true, cols: ['Control', 'Treatment 1', 'Treatment 2'], names_to: 'group', values_to: 'weight', drop_na: true },
   ], 'Plant growth (long)');
   const anova = newAnalysis(p, 'anova1', plantLong.id, { name: 'One-way ANOVA', y: 'weight', group: 'group' });
   newGraph(p, ensureBase({

@@ -44,12 +44,19 @@ function filterNA(vars) {
   return `filter(${vars.map((v) => `!is.na(${rsym(v)})`).join(', ')})`;
 }
 
+// The groups (columns) of a one-column-per-group analysis. all_columns: every
+// number column of the table, also ones added later.
+export function layoutColumns(a, schema) {
+  if (a.all_columns && schema?.columns) return schema.columns.filter((c) => c.type === 'numeric').map((c) => c.name);
+  return a.columns || [];
+}
+
 // Build `d`, a long data frame with one value column and one group column,
 // from either layout. Returns the code lines and the column names to use.
 function prepareGroups(a, ctx, { subject = false, two = false, oneLevel = false } = {}) {
   const src = ctx.rnameOf(a.dataset);
   if (a.layout === 'columns') {
-    const columns = two ? (a.groups || []).slice(0, 2) : a.columns || [];
+    const columns = two ? (a.groups || []).slice(0, 2) : layoutColumns(a, ctx.schemaOf(a.dataset));
     if (two && columns.length < 2) throw new Error('Choose the two columns (groups) to compare.');
     if (!two && !oneLevel && columns.length < 2) throw new Error('Choose at least two columns (groups).');
     if (oneLevel && !columns.length) throw new Error('Choose a column.');

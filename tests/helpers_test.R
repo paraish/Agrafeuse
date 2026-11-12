@@ -68,6 +68,25 @@ ok("pipe eval: no steps, full precision", {
   r <- jsonlite::fromJSON(ag_pipe_eval(data.frame(x = 1/3), character(), Inf, 15))
   stopifnot(r$table$rows[[1]] == "0.333333333333333")
 })
+ok("brackets above a fixed y axis top", {
+  above <- function(l) inherits(tryCatch(l$geom_params$grob, error = function(e) NULL), "ag_above")
+  pg <- PlantGrowth
+  inside <- ag_stat_compare(pg, x = "group", y = "weight")
+  stopifnot(!any(vapply(inside, above, logical(1))))
+  out <- ag_stat_compare(pg, x = "group", y = "weight", y_max = 6.4)
+  stopifnot(sum(vapply(out, above, logical(1))) == 4) # 3 brackets and the overall test
+  stopifnot(!any(vapply(ag_stat_compare(pg, x = "group", y = "weight", y_max = 20), above, logical(1)))) # they fit
+  stopifnot(any(vapply(ag_stat_compare(pg, x = "group", y = "weight", place = "above"), above, logical(1))))
+  stopifnot(!any(vapply(ag_stat_compare(pg, x = "group", y = "weight", y_max = 6.4, place = "inside"), above, logical(1))))
+  q <- ggplot(pg, aes(group, weight)) + geom_point() + out + coord_cartesian(ylim = c(3, 6.4)) + ag_theme_lab() + labs(title = "T")
+  q2 <- ag_stats_room(q)
+  stopifnot(q2$coordinates$clip == "off", identical(q2$coordinates$limits$y, c(3, 6.4)), q$coordinates$clip == "on")
+  stopifnot(as.numeric(calc_element("plot.title", theme_get() + q2$theme)$margin)[3] > 30)
+  j <- jsonlite::fromJSON(ag_draw(q2, tempfile(fileext = ".svg"), "svg", 5, 4, geometry = TRUE)); stopifnot(j$ok)
+  q3 <- ag_stats_room(ggplot(pg, aes(group, weight)) + geom_point() + out + coord_cartesian(ylim = c(3, 6.4)) + theme_bw())
+  stopifnot(as.numeric(calc_element("plot.margin", theme_get() + q3$theme))[1] > 30)
+  stopifnot(identical(ag_stats_room(ggplot(pg, aes(group, weight)) + inside)$coordinates$clip, "on"))
+})
 ok("eval_json warning", cat(ag_eval_json("x <- as.numeric('a'); 'hi'"), "\n"))
 ok("eval_json error", cat(ag_eval_json("stop('boom')"), "\n"))
 ok("eval_json error call", cat(ag_eval_json("log(-1:'a')"), "\n"))

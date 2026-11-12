@@ -23,7 +23,8 @@ export function stepFields(step, i, ctx) {
   switch (step.type) {
     case 'pivot_longer':
       return [
-        field('Columns to stack', multiCheck(cols, step.cols, (v) => { step.cols = v; ctx.changed(); }, { k: k('cols') })),
+        bindCheck(step, 'all', 'Every number column (also ones added later)', ch(true), { k: k('all') }),
+        step.all ? null : field('Columns to stack', multiCheck(cols, step.cols, (v) => { step.cols = v; ctx.changed(); }, { k: k('cols') })),
         h('div.row2',
           field('Name column', bindInput(step, 'names_to', ch(), { k: k('names') })),
           field('Value column', bindInput(step, 'values_to', ch(), { k: k('values') }))),

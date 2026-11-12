@@ -7,6 +7,7 @@ import { formulaDialog } from './formulaDialog.js';
 import { Grid } from './grid.js';
 import { parseDelimited, tableFromRows, inferColumns, dataCode } from '../codegen/data.js';
 import { newTransform, uniqueName } from '../model.js';
+import { renameColumn } from '../rename.js';
 import { itemHeader } from './common.js';
 import { PipePanel } from './pipePanel.js';
 
@@ -77,7 +78,9 @@ export class DataView {
         row[index] = v;
       });
     } else if (index != null) {
+      const from = it.columns[index].name;
       Object.assign(it.columns[index], { name: res.name, formula: res.formula });
+      if (from !== res.name) this.renamed(from, res.name);
     } else {
       const at = source != null ? source + 1 : it.columns.length;
       it.columns.splice(at, 0, { name: res.name, type: 'auto', formula: res.formula });
@@ -111,6 +114,7 @@ export class DataView {
     this.grid = new Grid(it, {
       onChange: ({ structural }) => this.app.store.change(it.id, { structural }),
       onFormula: (index, source) => this.formula(index, source),
+      onRename: (from, to) => this.renamed(from, to),
     });
     this.formulaMsg = h('div.formula-msg');
     this.pipe = new PipePanel(this.app, it, { onShow: (mode) => this.show(mode) });
@@ -183,12 +187,20 @@ export class DataView {
     toast(`Imported ${t.rows.length} rows from ${file.name}.`);
   }
 
+  // A column was renamed: so is every use of it in the transforms, analyses and graphs that follow.
+  renamed(from, to) {
+    const ids = renameColumn(this.app.store.project, this.item, from, to).filter((id) => id !== this.item.id);
+    for (const id of ids) this.app.store.change(id);
+    if (ids.length) toast(`Renamed "${from}" to "${to}" in ${ids.length} item${ids.length > 1 ? 's' : ''} that use${ids.length > 1 ? '' : 's'} it.`);
+  }
+
   makeLong() {
     const { columns } = inferColumns(this.item);
     const nums = columns.filter((c) => c.type === 'numeric').map((c) => c.name);
     if (nums.length < 2) { toast('Wide → long needs at least two number columns.', 'error'); return; }
     const p = this.app.store.project;
-    const t = newTransform(p, this.item.id, [{ type: 'pivot_longer', cols: nums, names_to: 'group', values_to: 'value', drop_na: true }],
+    // Every number column, including ones added later.
+    const t = newTransform(p, this.item.id, [{ type: 'pivot_longer', all: true, cols: nums, names_to: 'group', values_to: 'value', drop_na: true }],
       uniqueName(p, `${this.item.name} (long)`));
     this.app.store.change(t.id, { structural: true });
     this.app.store.select(t.id);

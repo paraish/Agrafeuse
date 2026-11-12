@@ -337,6 +337,7 @@ export class GraphView {
     return [
       h('div.param', h('label', 'Show'), bindSelect(ann, 'format', [['stars', 'Stars (*, **, ns)'], ['p', 'p = 0.0123'], ['number', '0.0123']], ch(), { k: k('fmt') })),
       h('div.param', bindCheck(ann, 'hide_ns', 'Hide non-significant (ns)', ch(), { k: k('ns') })),
+      h('div.param', h('label', 'Where'), bindSelect(ann, 'place', [['auto', 'Automatic: above the axes when they do not fit under a fixed top'], ['inside', 'Inside the axes (the Y axis grows to fit them)'], ['above', 'Above the axes']], ch(), { k: k('place') })),
       h('details.more', { open: more },
         h('summary', 'Bracket height, spacing and text size'),
         h('div.param', h('label', 'Start height (blank = automatic)'), bindInput(ann, 'y_start', ch(), { type: 'number', k: k('y0'), width: '80px' })),

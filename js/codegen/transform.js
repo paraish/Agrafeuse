@@ -14,13 +14,20 @@ export const STEP_TYPES = {
   pivot_longer: {
     label: 'Wide → long (melt / pivot longer)',
     verb: 'pivot_longer', short: 'Wide → long (melt)',
-    brief: (s) => `${s.cols.join(', ')} → ${s.names_to || 'group'}, ${s.values_to || 'value'}`,
+    brief: (s) => `${s.all ? 'every number column' : s.cols.join(', ')} → ${s.names_to || 'group'}, ${s.values_to || 'value'}`,
     help: 'Stack several columns into two: one naming the column a value came from, one holding the value. Use this to turn a table with one column per group into the long format ggplot2 and most tests need.',
     defaults: (schema) => ({
+      all: true,
       cols: (schema?.columns || []).filter((c) => c.type === 'numeric').map((c) => c.name),
       names_to: 'group', values_to: 'value', drop_na: true,
     }),
     code: (s) => {
+      const names = rsym(s.names_to || 'group');
+      if (s.all) {
+        // Every number column, in their order (also ones added to the table later).
+        return [`pivot_longer(where(is.numeric), names_to = ${rstr(s.names_to || 'group')}, values_to = ${rstr(s.values_to || 'value')}${s.drop_na ? ', values_drop_na = TRUE' : ''}, cols_vary = "slowest")`,
+          `mutate(${names} = factor(${names}, levels = unique(${names})))`];
+      }
       if (!s.cols?.length) throw new Error('Choose the columns to stack.');
       const lines = [`pivot_longer(${cols(s.cols)}, names_to = ${rstr(s.names_to || 'group')}, values_to = ${rstr(s.values_to || 'value')}${s.drop_na ? ', values_drop_na = TRUE' : ''})`];
       lines.push(`mutate(${rsym(s.names_to || 'group')} = factor(${rsym(s.names_to || 'group')}, levels = ${rvec(s.cols.map(rstr), '    ')}))`);

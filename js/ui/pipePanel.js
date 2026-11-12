@@ -193,7 +193,7 @@ export class PipePanel {
       rows, rowNames,
     });
     this.app.added(t);
-    toast(`Made the data table "${t.name}" (${rows.length} rows) from the pipeline.`);
+    toast(`Copied the result into the data table "${t.name}" (${rows.length} rows). It is a copy: it will not follow changes to "${this.item.name}" (a linked transform would).`, 'info', 7000);
   }
 
   async toTransform() {
@@ -239,13 +239,13 @@ export class PipePanel {
         h('button.pipe-add', { type: 'button', 'data-k': 'pipe-add', onclick: (e) => this.menu(e.currentTarget) },
           icon('plus'), steps.length ? 'Add a step' : 'Add a first step (filter, summarise, select…)')),
       h('div.pipe-foot',
-        button('New data table', () => this.toDataTable(), {
-          iconName: 'table', kind: 'primary', k: 'pipe-to-table', disabled: !steps.length,
-          title: 'Copy the result into a new data table you can edit',
-        }),
         button('Linked transform', () => this.toTransform(), {
-          iconName: 'transform', k: 'pipe-to-transform', disabled: !steps.length,
-          title: 'Keep these steps as a transform that updates when this table changes',
+          iconName: 'transform', kind: 'primary', k: 'pipe-to-transform', disabled: !steps.length,
+          title: 'Keep these steps as a transform: its result, and the graphs and analyses that use it, update when this table changes',
+        }),
+        button('Copy as data table', () => this.toDataTable(), {
+          iconName: 'table', k: 'pipe-to-table', disabled: !steps.length,
+          title: 'Copy the result into a new data table you can edit. A copy: it does not change when this table does',
         })));
   }
 

@@ -562,6 +562,40 @@ try {
   await page.waitForFunction((n) => document.querySelectorAll('.cp-bot').length >= n, 3);
   check(!mock.state.last.messages[0].content.includes('First rows of'), 'without permission, no data values are sent');
 
+  // --- changes to a table reach everything that uses it ----------------------------------------------
+  await page.evaluate(async () => { const { exampleProject } = await import('./js/example.js'); window.agrafeuse.store.load(exampleProject()); });
+  await settle();
+  const ex = await page.evaluate(() => Object.fromEntries(window.agrafeuse.store.project.items.map((i) => [i.kind, i.id])));
+  await nav('One-way ANOVA');
+  await settle();
+  const anovaSummary = () => page.evaluate((id) => window.agrafeuse.engine.result(id)?.result?.summary || '', ex.analysis);
+  check((await anovaSummary()).includes('F(2, 27)'), 'example ANOVA: three groups');
+  await nav('Plant growth');
+  await page.waitForSelector('.grid');
+  await page.click('.sheet th[data-r="-1"][data-c="0"] .colname');
+  await page.keyboard.type('Vehicle');
+  await page.keyboard.press('Enter');
+  await page.waitForFunction(() => /Renamed "Control" to "Vehicle" in \d+ items/.test(document.querySelector('.toasts')?.textContent || ''), null, { timeout: 5000 });
+  check(true, 'renaming a column says where else it changed');
+  // A new group: a fourth column, pasted in and named.
+  await page.click('.sheet td[data-r="0"][data-c="3"]');
+  await page.evaluate(() => {
+    const dt = new DataTransfer();
+    dt.setData('text/plain', ['6.1', '5.9', '6.4', '6.0', '5.7', '6.3', '6.2', '5.8', '6.6', '6.1'].join('\n'));
+    document.querySelector('.grid').dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true }));
+  });
+  await page.click('.sheet th[data-r="-1"][data-c="3"] .colname');
+  await page.keyboard.type('Treatment 3');
+  await page.keyboard.press('Enter');
+  // Switch to the graph only: the ANOVA is brought up to date in the background.
+  await nav('scatter');
+  await settle();
+  await page.waitForFunction((id) => /F\(3, 36\)/.test(window.agrafeuse.engine.result(id)?.result?.summary || ''), ex.analysis, { timeout: 30000 }).catch(() => {});
+  check((await anovaSummary()).includes('F(3, 36)'), `the ANOVA follows the renamed and the new column without being opened (${await anovaSummary()})`);
+  const groups = await page.evaluate((id) => window.agrafeuse.engine.schemaOf(id)?.columns?.find((c) => c.name === 'group')?.levels || [], ex.transform);
+  check(groups.join(',') === 'Vehicle,Treatment 1,Treatment 2,Treatment 3', `the long version stacks every number column, new ones too (${groups.join(', ')})`);
+  check(await page.locator('.preview-status .message.error').count() === 0 && await page.locator('.nav .state.bad').count() === 0, 'the graph redraws, and nothing is marked broken');
+
   check(errors.length === 0, `no errors in the browser console${errors.length ? ': ' + errors.join(' | ') : ''}`);
 } catch (e) {
   console.error(e);

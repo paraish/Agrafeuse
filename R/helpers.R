@@ -147,9 +147,16 @@ ag_okabe_ito <- c("#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2",
 # Comparisons made within each level of the x variable (e.g. treatment within
 # each dose) are drawn between side-by-side ("dodged") groups; `dodge` must
 # match the dodge width of the graph (Agrafeuse uses 0.8).
+#
+# Where they go (place): "inside" the axes (the y axis grows to fit them),
+# "above" the axes (in a strip over the panel, outside the area the axes bound),
+# or "auto": above when the y axis has a fixed top (y_max) they do not fit under.
+# Brackets above the axes need ag_stats_room() on the finished plot, which
+# makes room for them.
 ag_brackets <- function(result, data, x, y, format = "stars", hide_ns = FALSE,
                         y_start = NULL, step = 0.09, tip = 0.02, text_size = 4.5,
-                        colour = "black", linewidth = 0.6, dodge = 0.8, headroom = 0.08) {
+                        colour = "black", linewidth = 0.6, dodge = 0.8, headroom = 0.08,
+                        y_max = NULL, place = "auto", corner = NULL, corner_left = TRUE, corner_size = 4.2) {
   cmp <- result$comparisons
   if (is.null(cmp) || !nrow(cmp)) return(list())
   if (!all(c("group1", "group2", "p") %in% names(cmp))) return(list())
@@ -230,6 +237,20 @@ ag_brackets <- function(result, data, x, y, format = "stars", hide_ns = FALSE,
   # Asterisks sit high in the line, so they go right on the bracket; text sits above it.
   is_star <- grepl("^\\*+$", labels)
 
+  above <- identical(place, "above") ||
+    (identical(place, "auto") && length(y_max) == 1 && is.finite(y_max) && max(yb) + 0.06 * rng > y_max)
+  if (above) {
+    # Rows: narrow brackets first, each above any bracket it overlaps.
+    lvl <- integer(length(lo)); placed <- integer()
+    for (k in ord) {
+      clash <- placed[lo[placed] <= hi[k] + 1e-9 & hi[placed] >= lo[k] - 1e-9]
+      lvl[k] <- if (length(clash)) max(lvl[clash]) + 1L else 0L
+      placed <- c(placed, k)
+    }
+    return(ag_brackets_above(lo, hi, labels, is_star, lvl, text_size, colour, linewidth,
+                             corner = corner, corner_left = corner_left, corner_size = corner_size))
+  }
+
   list(
     ggplot2::annotate("segment",
       x = c(lo, lo, hi), xend = c(lo, hi, hi),
@@ -239,6 +260,78 @@ ag_brackets <- function(result, data, x, y, format = "stars", hide_ns = FALSE,
       label = labels, vjust = ifelse(is_star, 0.3, 0), size = text_size, colour = colour),
     ggplot2::expand_limits(y = max(yb) + headroom * rng)
   )
+}
+
+# Brackets in a strip above the panel: one annotation per bracket, spanning its
+# groups on the x axis and placed in points above the panel's top edge. Each
+# carries how much room (in points) the strip needs; ag_stats_room() makes it.
+ag_brackets_above <- function(lo, hi, labels, is_star, lvl, text_size = 4.5, colour = "black",
+                              linewidth = 0.6, corner = NULL, corner_left = TRUE, corner_size = 4.2) {
+  fs <- text_size * ggplot2::.pt
+  tip <- 4; gap <- 5
+  row_h <- fs * 1.25 + tip + 2
+  rows <- if (length(lvl)) max(lvl) + 1 else 0
+  label_h <- if (!is.null(corner) && nzchar(corner)) {
+    (length(strsplit(corner, "\n", fixed = TRUE)[[1]]) * corner_size * ggplot2::.pt * 1.15) + 4
+  } else 0
+  room <- gap + rows * row_h + label_h + 2
+  mark <- function(g) { g$ag_room <- room; class(g) <- c("ag_above", class(g)); g }
+  out <- lapply(seq_along(lo), function(k) {
+    y0 <- gap + lvl[k] * row_h
+    line_y <- y0 + tip
+    g <- grid::gTree(children = grid::gList(
+      grid::polylineGrob(x = grid::unit(c(0, 0, 1, 1), "npc"), y = grid::unit(c(y0, line_y, line_y, y0), "pt"),
+                         gp = grid::gpar(col = colour, lwd = linewidth * ggplot2::.pt, lineend = "butt")),
+      grid::textGrob(labels[k], x = grid::unit(0.5, "npc"),
+                     y = grid::unit(line_y + if (is_star[k]) 0 else 1.5, "pt"),
+                     vjust = if (is_star[k]) 0.3 else 0, gp = grid::gpar(col = colour, fontsize = fs))))
+    ggplot2::annotation_custom(mark(g), xmin = lo[k], xmax = hi[k], ymin = Inf, ymax = Inf)
+  })
+  if (label_h > 0) {
+    g <- grid::textGrob(corner, x = grid::unit(if (corner_left) 0 else 1, "npc"), y = grid::unit(gap + rows * row_h + 2, "pt"),
+                        hjust = if (corner_left) 0 else 1, vjust = 0,
+                        gp = grid::gpar(col = colour, fontsize = corner_size * ggplot2::.pt, lineheight = 1.1))
+    out <- c(out, list(ggplot2::annotation_custom(mark(grid::gTree(children = grid::gList(g))), xmin = -Inf, xmax = Inf, ymin = Inf, ymax = Inf)))
+  }
+  out
+}
+
+# Makes room above the panel for brackets drawn there (ag_brackets_above): stops
+# clipping at the panel's edge and adds the space between the panel and what
+# is above it (the subtitle, the title, a legend on top, or the plot's edge).
+ag_stats_room <- function(p) {
+  room <- 0
+  for (l in p$layers) {
+    g <- tryCatch(l$geom_params$grob, error = function(e) NULL)
+    if (inherits(g, "ag_above")) room <- max(room, g$ag_room %||% 0)
+  }
+  if (room <= 0) return(p)
+  # The same coordinate system (and ranges), without clipping at the panel's edge.
+  # (ggproto() keeps its parent as a promise: take the coordinate system first.)
+  coord <- p$coordinates
+  p <- suppressMessages(p + ggplot2::ggproto(NULL, coord, clip = "off"))
+  th <- ggplot2::theme_get() + p$theme
+  pts <- function(u, def) {
+    ok <- tryCatch(inherits(u, "unit") && length(u) == length(def) && all(grid::unitType(u) %in% c("pt", "points")), error = function(e) FALSE)
+    if (ok) as.numeric(u) else def
+  }
+  labs <- p$labels
+  has <- function(k) { v <- labs[[k]]; !is.null(v) && !(is.character(v) && !any(nzchar(v))) }
+  maps <- unique(c(names(p$mapping), unlist(lapply(p$layers, function(l) names(l$mapping)))))
+  legend_top <- identical(as.character(ggplot2::calc_element("legend.position", th) %||% "right")[1], "top") &&
+    any(c("colour", "fill", "shape", "linetype", "size", "alpha") %in% maps)
+  if (legend_top) {
+    s <- pts(ggplot2::calc_element("legend.box.spacing", th), 11)
+    return(p + ggplot2::theme(legend.box.spacing = grid::unit(s + room, "pt")))
+  }
+  el <- if (has("subtitle")) "plot.subtitle" else if (has("title")) "plot.title" else NULL
+  if (!is.null(el)) {
+    m <- pts(ggplot2::calc_element(el, th)$margin, c(0, 0, 5.5, 0))
+    return(p + do.call(ggplot2::theme, stats::setNames(list(ggplot2::element_text(
+      margin = ggplot2::margin(m[1], m[2], m[3] + room, m[4], unit = "pt"))), el)))
+  }
+  m <- pts(ggplot2::calc_element("plot.margin", th), c(5.5, 5.5, 5.5, 5.5))
+  p + ggplot2::theme(plot.margin = ggplot2::margin(m[1] + room, m[2], m[3], m[4], unit = "pt"))
 }
 
 # ---- Statistics from a graph's own data (like ggpubr's stat_compare_means) ----
@@ -337,13 +430,18 @@ ag_compare <- function(data, x, y, method = "t.test", comparisons = "all", ref =
 ag_stat_compare <- function(data, x, y, method = "t.test", comparisons = "all", ref = NULL,
                             p_adjust = "holm", paired = FALSE, subject = NULL, within = NULL,
                             format = "stars", hide_ns = FALSE, overall = TRUE, position = "top-left",
-                            y_start = NULL, step = 0.09, text_size = 4.5, label_size = 4.2) {
+                            y_start = NULL, step = 0.09, text_size = 4.5, label_size = 4.2,
+                            y_max = NULL, place = "auto") {
   res <- ag_compare(data, x, y, method, comparisons, ref, p_adjust, paired, subject, within)
   # Leave room above the brackets for the overall result when it goes at the top.
   label_on_top <- overall && !is.null(res$label) && grepl("top", position)
   out <- ag_brackets(res, data, x, y, format = format, hide_ns = hide_ns, y_start = y_start,
-                     step = step, text_size = text_size, headroom = if (label_on_top) 0.24 else 0.08)
-  if (overall && !is.null(res$label)) out <- c(out, list(ag_corner_label(res$label, position, size = label_size)))
+                     step = step, text_size = text_size, headroom = if (label_on_top) 0.24 else 0.08,
+                     y_max = y_max, place = place, corner = if (label_on_top) res$label,
+                     corner_left = grepl("left", position), corner_size = label_size)
+  # Brackets above the axes take the overall result with them when it goes at the top.
+  above <- any(vapply(out, function(l) inherits(tryCatch(l$geom_params$grob, error = function(e) NULL), "ag_above"), logical(1)))
+  if (overall && !is.null(res$label) && !(above && label_on_top)) out <- c(out, list(ag_corner_label(res$label, position, size = label_size)))
   out
 }
 

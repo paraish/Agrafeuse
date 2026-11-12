@@ -519,9 +519,23 @@ export function graphCode(g, ctx) {
   });
 
   // Statistics: computed from the graph's own data, or drawn from analyses.
+  // Brackets go above the axes when the Y axis has a fixed top they do not fit
+  // under (or when asked to); ag_stats_room() then makes room for them.
+  const yTop = !g.flip && !g.facet?.by && g.y_scale && !g.y_scale.reverse && g.y_scale.max !== '' && g.y_scale.max != null
+    && !Number.isNaN(Number(g.y_scale.max)) ? Number(g.y_scale.max) : null;
+  const placeArgs = (ann) => {
+    if (g.flip || g.facet?.by) return [];
+    const a = [];
+    if (yTop != null && ann.place !== 'inside') a.push(`y_max = ${rnum(yTop)}`);
+    if (ann.place === 'above' || ann.place === 'inside') a.push(`place = ${rstr(ann.place)}`);
+    return a;
+  };
+  const mayGoAbove = (ann) => !g.flip && !g.facet?.by && ann.place !== 'inside' && (yTop != null || ann.place === 'above');
+  let statsRoom = false;
   for (const ann of g.annotations || []) {
     if (ann.kind === 'compare') {
-      parts.push(compareCode(ann, main, yLayer, ctx));
+      if (ann.comparisons !== 'none' && mayGoAbove(ann)) statsRoom = true;
+      parts.push(compareCode(ann, main, yLayer, ctx, placeArgs(ann)));
       continue;
     }
     const an = ctx.analyses[ann.analysis];
@@ -537,6 +551,8 @@ export function graphCode(g, ctx) {
       if (ann.y_start !== '' && ann.y_start != null) a.push(`y_start = ${rnum(ann.y_start)}`);
       if (ann.step !== '' && ann.step != null && Number(ann.step) !== 0.09) a.push(`step = ${rnum(ann.step)}`);
       if (ann.text_size && Number(ann.text_size) !== 4.5) a.push(`text_size = ${rnum(ann.text_size)}`);
+      a.push(...placeArgs(ann));
+      if (mayGoAbove(ann)) statsRoom = true;
       parts.push(`ag_brackets(${a.join(', ')})`);
     } else if (ann.kind === 'label') {
       const a = [`${res}$label`, rstr(ann.position || 'top-left')];
@@ -692,7 +708,9 @@ export function graphCode(g, ctx) {
   const extra = (g.custom || '').trim();
   if (extra) parts.push(extra);
 
-  return `${g.rname} <- ${head}${parts.length ? ' +\n' + parts.map((p) => '  ' + p.replace(/\n/g, '\n  ')).join(' +\n') : ''}`;
+  const code = `${g.rname} <- ${head}${parts.length ? ' +\n' + parts.map((p) => '  ' + p.replace(/\n/g, '\n  ')).join(' +\n') : ''}`;
+  // Room above the panel for brackets drawn there.
+  return statsRoom ? `${code}\n${g.rname} <- ag_stats_room(${g.rname})` : code;
 }
 
 export const NOTE_DEFAULTS = { text: 'Text', x: 0.5, y: 0.9, data: false, size: 4, colour: '#000000', fill: '#ffffff', border: 0.25, bold: false, italic: false, align: 'center' };
@@ -733,7 +751,7 @@ export const COMPARE_TESTS = [
 ];
 
 // "Compare groups": tests computed from the first layer's data (ag_stat_compare).
-function compareCode(ann, main, yLayer, ctx) {
+function compareCode(ann, main, yLayer, ctx, place = []) {
   const yCol = (main?.aes?.y?.mode === 'col' ? main.aes.y : yLayer?.aes?.y)?.col;
   if (!main || !yCol) throw new Error('Comparing groups needs a layer with X and Y columns.');
   const x = main.aes.x.col;
@@ -758,6 +776,7 @@ function compareCode(ann, main, yLayer, ctx) {
   if (ann.y_start !== '' && ann.y_start != null) a.push(`y_start = ${rnum(ann.y_start)}`);
   if (ann.step !== '' && ann.step != null && Number(ann.step) !== 0.09) a.push(`step = ${rnum(ann.step)}`);
   if (ann.text_size && Number(ann.text_size) !== 4.5) a.push(`text_size = ${rnum(ann.text_size)}`);
+  if (ann.comparisons !== 'none') a.push(...place);
   return `ag_stat_compare(${a.join(', ')})`;
 }
 

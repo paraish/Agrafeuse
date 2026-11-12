@@ -41,7 +41,10 @@ export class App {
     this.build();
     store.addEventListener('load', () => { this.renderNav(); this.mount(); });
     store.addEventListener('select', () => { this.renderNav(); this.mount(); });
+    this.edited = new Set(); // items changed since the last switch
+    store.addEventListener('load', () => this.edited.clear());
     store.addEventListener('change', (e) => {
+      if (e.detail.id) this.edited.add(e.detail.id);
       if (e.detail.structural) this.renderNav();
       this.view?.onChange?.(e.detail);
     });
@@ -162,6 +165,21 @@ export class App {
     else this.view = new GraphView(this, it);
     fill(this.main, this.view.el);
     this.store.settle();
+    this.refreshDependents();
+  }
+
+  // On switching: bring everything that uses the items changed since the last
+  // switch up to date, in the background, after the view just opened. (Each
+  // view also updates what it shows when opened.) The navigator then marks
+  // anything that stopped working.
+  refreshDependents() {
+    const p = this.store.project;
+    const stale = new Set([...this.edited].flatMap((id) => (getItem(p, id) ? dependentsOf(p, id) : [])));
+    this.edited.clear();
+    if (!stale.size || !['ready', 'busy'].includes(this.engine.state)) return;
+    setTimeout(() => {
+      for (const id of stale) if (getItem(this.store.project, id)) this.engine.ensure(id).catch(() => {});
+    }, 0);
   }
 
   welcome() {
@@ -212,13 +230,17 @@ export class App {
   }
 
   // The long version of a one-column-per-group table (made if it doesn't exist yet).
+  // Every number column: also the ones added to the table later.
   longVersion(tableId, columns) {
     const p = this.store.project;
-    const found = itemsOf(p, 'transform').find((t) => t.input === tableId && t.steps.length === 1 && t.steps[0].type === 'pivot_longer'
-      && t.steps[0].names_to === 'group' && t.steps[0].values_to === 'value' && JSON.stringify(t.steps[0].cols) === JSON.stringify(columns));
+    const nums = (this.engine.schemaOf(tableId)?.columns || []).filter((c) => c.type === 'numeric').map((c) => c.name);
+    const all = columns.length === nums.length && columns.every((c) => nums.includes(c));
+    const same = (s) => s.type === 'pivot_longer' && s.names_to === 'group' && s.values_to === 'value'
+      && (all ? !!s.all : !s.all && JSON.stringify(s.cols) === JSON.stringify(columns));
+    const found = itemsOf(p, 'transform').find((t) => t.input === tableId && t.steps.length === 1 && same(t.steps[0]));
     if (found) return found;
     const src = getItem(p, tableId);
-    const t = newTransform(p, tableId, [{ type: 'pivot_longer', cols: columns, names_to: 'group', values_to: 'value', drop_na: true }], uniqueName(p, `${src.name} (long)`));
+    const t = newTransform(p, tableId, [{ type: 'pivot_longer', ...(all ? { all: true } : {}), cols: columns, names_to: 'group', values_to: 'value', drop_na: true }], uniqueName(p, `${src.name} (long)`));
     this.store.change(t.id, { structural: true });
     return t;
   }
