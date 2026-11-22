@@ -1339,19 +1339,32 @@ ag_draw <- function(plot, file, format = "svg", width = 5, height = 4, dpi = 300
 
 # The panel's edges as fractions of the image (from the top-left corner) and
 # the visible range of the horizontal (h) and vertical (v) axes, in the scale's
-# own units (e.g. log10 units on a log axis). Only for single-panel plots.
+# own units (e.g. log10 units on a log axis), for single-panel plots; and, for
+# any plot, where the axis titles and the plot title are (labels: boxes in the
+# same fractions), so they can be edited on the graph.
 ag_panel_geometry <- function(built, table, width, height) {
+  box <- function(rows, cols) {
+    grid::seekViewport("layout")
+    grid::pushViewport(grid::viewport(layout.pos.row = rows, layout.pos.col = cols))
+    ll <- grid::deviceLoc(grid::unit(0, "npc"), grid::unit(0, "npc"), valueOnly = TRUE)
+    ur <- grid::deviceLoc(grid::unit(1, "npc"), grid::unit(1, "npc"), valueOnly = TRUE)
+    grid::upViewport(0)
+    list(left = ll$x / width, right = ur$x / width, top = 1 - ur$y / height, bottom = 1 - ll$y / height)
+  }
+  labels <- list()
+  for (nm in c("xlab-b", "ylab-l", "title")) {
+    i <- which(table$layout$name == nm)
+    if (length(i) != 1 || inherits(table$grobs[[i]], "zeroGrob")) next
+    b <- tryCatch(box(table$layout$t[i]:table$layout$b[i], table$layout$l[i]:table$layout$r[i]), error = function(e) NULL)
+    if (!is.null(b) && b$right - b$left > 0.002 && b$bottom - b$top > 0.002) labels[[nm]] <- b
+  }
+  out <- list(labels = if (length(labels)) labels else NULL)
   panels <- table$layout[grepl("^panel", table$layout$name), , drop = FALSE]
-  if (nrow(panels) != 1) return(NULL)
-  grid::seekViewport("layout")
-  grid::pushViewport(grid::viewport(layout.pos.row = panels$t:panels$b, layout.pos.col = panels$l:panels$r))
-  ll <- grid::deviceLoc(grid::unit(0, "npc"), grid::unit(0, "npc"), valueOnly = TRUE)
-  ur <- grid::deviceLoc(grid::unit(1, "npc"), grid::unit(1, "npc"), valueOnly = TRUE)
-  grid::upViewport(0)
+  if (nrow(panels) != 1) return(if (length(labels)) out else NULL)
+  p <- box(panels$t:panels$b, panels$l:panels$r)
   pp <- built$layout$panel_params[[1]]
   axis <- function(s) if (is.null(s) || s$is_discrete()) NULL else list(range = I(s$continuous_range))
-  list(left = ll$x / width, right = ur$x / width, top = 1 - ur$y / height, bottom = 1 - ll$y / height,
-       h = axis(pp$x), v = axis(pp$y))
+  c(p, list(h = axis(pp$x), v = axis(pp$y)), out)
 }
 
 # ---- Project files (.RData) -----------------------------------------------------------------

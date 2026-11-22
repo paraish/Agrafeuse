@@ -9,7 +9,7 @@ import { addFixtures } from './fixtures.mjs';
 import { getItem, newDataTable, newTransform, newAnalysis, newGraph, itemCode, topoOrder, itemPackages, upgradeProject } from '../js/model.js';
 import { FORMULA_PRESETS } from '../js/ui/formulaDialog.js';
 import { renameInExpr, renameColumn } from '../js/rename.js';
-import { emptyProject } from '../js/model.js';
+import { emptyProject, deletionPlan, removeItems } from '../js/model.js';
 import { dataSchema } from '../js/codegen/data.js';
 import { testDefaults, usesMixedModel } from '../js/codegen/stats.js';
 import { GEOMS, geomDefaults, PALETTES } from '../js/codegen/graph.js';
@@ -387,6 +387,23 @@ expect(renameInExpr('log(log) + paste(a, sep = sep)', 'log', 'lg') === 'log(lg) 
   expect([long.id, longAll.id, an.id, anCols.id, gr.id, gw.id].every((id) => changed.includes(id)), 'every item that uses it is reported');
   const sq = (id) => (id === t.id ? dataSchema(t) : null);
   expect(itemCode(q, longAll, sq).includes('pivot_longer(where(is.numeric)'), 'every number column, by R');
+}
+// Deleting a data table takes what cannot work without it.
+{
+  const q = emptyProject();
+  const a = newDataTable(q, { name: 'A', columns: [{ name: 'x' }, { name: 'y' }], rows: [['1', '2']] });
+  const b = newDataTable(q, { name: 'B', columns: [{ name: 'x' }, { name: 'y' }], rows: [['1', '2']] });
+  const ta = newTransform(q, a.id, [], 'A filtered');
+  const an = newAnalysis(q, 'anova1', ta.id, { y: 'y', group: 'x' });
+  const ga = newGraph(q, { name: 'GA', layers: [{ id: 'l1', geom: 'point', dataset: ta.id, aes: { x: map('x'), y: map('y') } }] });
+  const gab = newGraph(q, { name: 'GAB', layers: [{ id: 'l1', geom: 'point', dataset: a.id, aes: { x: map('x'), y: map('y') } }, { id: 'l2', geom: 'point', dataset: b.id, aes: { x: map('x'), y: map('y') } }] });
+  const gb = newGraph(q, { name: 'GB', layers: [{ id: 'l1', geom: 'point', dataset: b.id, aes: { x: map('x'), y: map('y') } }], annotations: [{ id: 'n', kind: 'label', analysis: an.id }] });
+  const plan = deletionPlan(q, a.id);
+  expect(JSON.stringify(plan.gone) === JSON.stringify([a.id, ta.id, an.id, ga.id]) && JSON.stringify(plan.kept) === JSON.stringify([gab.id, gb.id]),
+    `deletion plan: the table's transform, analysis and graph go; graphs that also draw other data stay (${JSON.stringify(plan)})`);
+  removeItems(q, plan.gone);
+  expect(q.items.length === 3 && gab.layers.length === 1 && gab.layers[0].dataset === b.id && gb.annotations.length === 0, 'kept graphs lose only what used it');
+  expect(JSON.stringify(deletionPlan(q, gb.id)) === JSON.stringify({ gone: [gb.id], kept: [] }), 'a graph alone');
 }
 console.log('code checks ok');
 

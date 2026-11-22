@@ -477,7 +477,7 @@ export class GraphView {
     if (!this.noteLayer) return;
     const geo = this.geometry;
     const notes = this.item.notes || [];
-    fill(this.noteLayer, geo ? notes.map((n, i) => {
+    fill(this.noteLayer, geo?.left != null ? notes.map((n, i) => {
       if (n.data || !String(n.text ?? '').trim()) return null;
       const left = geo.left + (n.x ?? 0.5) * (geo.right - geo.left);
       const top = geo.top + (1 - (n.y ?? 0.5)) * (geo.bottom - geo.top);
@@ -491,7 +491,7 @@ export class GraphView {
 
   startNoteDrag(e, n) {
     const geo = this.geometry;
-    if (e.button !== 0 || !geo) return;
+    if (e.button !== 0 || geo?.left == null) return;
     e.preventDefault();
     e.stopPropagation();
     const grip = e.currentTarget;
@@ -732,13 +732,17 @@ export class GraphView {
     });
     this.zoneV = zone('v');
     this.zoneH = zone('h');
+    // The axis titles and the graph's title: click one to change it right there.
+    this.labelZones = Object.fromEntries([['xlab-b', 'bottom'], ['ylab-l', 'left'], ['title', 'title']].map(([part, where]) => [part,
+      h('div', { class: `label-zone label-zone-${where}`, hidden: true, 'data-k': `edit-${where}-title`, onclick: (e) => { e.stopPropagation(); this.editLabel(part); } })]));
+    this.labelEditor = h('input.label-editor', { type: 'text', hidden: true, 'data-k': 'label-editor', spellcheck: 'false' });
     this.axisGuide = h('div.axis-guide', { hidden: true });
     this.axisBadge = h('span.axis-badge', { hidden: true });
     this.noteLayer = h('div.note-handles');
     this.frame = h('div.plot-frame', {
       tabindex: 0, 'aria-label': 'Graph preview. Drag its edges, or use Shift + arrow keys, to resize. Drag along an axis to stretch it.',
       onkeydown: (e) => this.keyResize(e),
-    }, h('div.plot-clip', this.img), this.zoneV, this.zoneH, this.noteLayer, this.axisGuide, this.axisBadge,
+    }, h('div.plot-clip', this.img), this.zoneV, this.zoneH, ...Object.values(this.labelZones), this.labelEditor, this.noteLayer, this.axisGuide, this.axisBadge,
     handle('e', 'Drag to change the width'), handle('s', 'Drag to change the height'), handle('se', 'Drag to resize (hold Shift to keep the shape)'), this.ghost);
     this.stage = h('div.stage', { class: 'fit' }, this.frame);
     this.status = h('div.preview-status');
@@ -766,7 +770,9 @@ export class GraphView {
         segmented([['fit', 'Fit'], ['100', '100%']], this.zoom, (z) => this.setZoom(z), { small: true, k: 'zoom' }),
         h('span.grow'),
         this.fmtHost, dpiWrap,
-        button('Export', () => this.exportPlot(), { iconName: 'download', kind: 'primary', k: 'export' })),
+        h('span.export-actions',
+          button('Copy', () => this.copyPlot(), { iconName: 'copy', k: 'copy-graph', title: 'Copy the graph to the clipboard as a picture (PNG), to paste into slides, a document or an email' }),
+          button('Export', () => this.exportPlot(), { iconName: 'download', kind: 'primary', k: 'export' }))),
       this.stage, this.status, this.formatHost, this.below);
     this.zoomHost = this.right.querySelector('.segmented');
     this.resize = new ResizeObserver(() => this.fitImage());
@@ -843,18 +849,104 @@ export class GraphView {
     const geo = this.geometry;
     const pct = (v) => `${(v * 100).toFixed(3)}%`;
     const label = (orient) => `Drag to stretch or shrink the ${this.axisScale(orient).which.toUpperCase()} axis. Double-click to reset it.`;
+    // The strips cover the tick labels, not the axis titles (a click there edits the title).
+    const ylab = geo?.labels?.['ylab-l'];
+    const xlab = geo?.labels?.['xlab-b'];
     if (geo?.v) {
-      const w = Math.min(geo.left, 0.14);
-      Object.assign(this.zoneV.style, { left: pct(geo.left - w), width: pct(w + 0.015), top: pct(geo.top), height: pct(geo.bottom - geo.top) });
+      const from = Math.max(geo.left - Math.min(geo.left, 0.14), ylab && ylab.right < geo.left ? ylab.right : 0);
+      Object.assign(this.zoneV.style, { left: pct(from), width: pct(geo.left - from + 0.015), top: pct(geo.top), height: pct(geo.bottom - geo.top) });
       this.zoneV.title = label('v');
     }
     if (geo?.h) {
-      const ht = Math.min(1 - geo.bottom, 0.14);
-      Object.assign(this.zoneH.style, { left: pct(geo.left), width: pct(geo.right - geo.left), top: pct(geo.bottom - 0.015), height: pct(ht + 0.015) });
+      const to = Math.min(geo.bottom + Math.min(1 - geo.bottom, 0.14), xlab && xlab.top > geo.bottom ? xlab.top : 1);
+      Object.assign(this.zoneH.style, { left: pct(geo.left), width: pct(geo.right - geo.left), top: pct(geo.bottom - 0.015), height: pct(to - geo.bottom + 0.015) });
       this.zoneH.title = label('h');
     }
     this.zoneV.hidden = !geo?.v;
     this.zoneH.hidden = !geo?.h;
+    this.placeLabelZones();
+  }
+
+  // Which title a part of the picture shows: with the graph flipped, the bottom axis is Y.
+  labelKey(part) {
+    if (part === 'title') return 'title';
+    const bottom = part === 'xlab-b';
+    return bottom !== !!this.item.flip ? 'x' : 'y';
+  }
+
+  // The text a title shows now: what was typed, or the column's name.
+  labelText(key) {
+    const L = this.item.labels || {};
+    if (L[key]) return L[key];
+    if (key === 'title') return '';
+    const main = this.mainLayer();
+    const yl = effectiveLayers(this.item).find((l) => !GEOMS[l.geom].noData && l.aes?.y?.mode === 'col');
+    return key === 'x' ? main?.aes?.x?.col || '' : (main?.aes?.y?.mode === 'col' ? main.aes.y : yl?.aes?.y)?.col || '';
+  }
+
+  placeLabelZones() {
+    const boxes = this.geometry?.labels || {};
+    const pct = (v) => `${(v * 100).toFixed(3)}%`;
+    for (const [part, el] of Object.entries(this.labelZones || {})) {
+      const b = boxes[part];
+      el.hidden = !b;
+      if (!b) continue;
+      const key = this.labelKey(part);
+      Object.assign(el.style, { left: pct(b.left), width: pct(b.right - b.left), top: pct(b.top), height: pct(b.bottom - b.top) });
+      el.title = key === 'title' ? 'Click to change the title' : `Click to change the ${key.toUpperCase()} axis title`;
+    }
+    if (this.labelEditor && !this.labelEditor.hidden && !boxes[this.editingLabel]) this.labelEditor.hidden = true;
+  }
+
+  // An input over the title, with its text: Enter (or clicking away) keeps it, Escape does not.
+  editLabel(part) {
+    const b = this.geometry?.labels?.[part];
+    if (!b) return;
+    const key = this.labelKey(part);
+    const ed = this.labelEditor;
+    const before = this.labelText(key);
+    this.editingLabel = part;
+    const pct = (v) => `${(v * 100).toFixed(3)}%`;
+    const cx = (b.left + b.right) / 2;
+    const cy = (b.top + b.bottom) / 2;
+    Object.assign(ed.style, { left: pct(cx), top: pct(cy) });
+    ed.value = before;
+    ed.hidden = false;
+    ed.focus();
+    ed.select();
+    let done = false;
+    const finish = (keep) => {
+      if (done) return;
+      done = true;
+      ed.hidden = true;
+      ed.onkeydown = null;
+      ed.onblur = null;
+      this.editingLabel = null;
+      const v = ed.value.trim();
+      if (!keep || v === before) return;
+      const L = this.item.labels = this.item.labels || {};
+      L[key] = v;
+      // Emptied: no axis title (as "hide" does). The column's own name again: follow it (e.g. if it is renamed).
+      if (key !== 'title' && !v) L[`hide_${key}`] = true;
+      if (key !== 'title' && v && v === this.autoLabel(key)) L[key] = '';
+      this.changed(true);
+    };
+    ed.onkeydown = (e) => {
+      e.stopPropagation(); // typing here is not a shortcut for the graph or the app
+      if (e.key === 'Enter') { e.preventDefault(); finish(true); }
+      else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); finish(false); }
+    };
+    ed.onblur = () => finish(true);
+  }
+
+  // The column name an axis shows when no title is typed.
+  autoLabel(key) {
+    const L = this.item.labels = this.item.labels || {};
+    const saved = L[key];
+    L[key] = '';
+    const text = this.labelText(key);
+    L[key] = saved;
+    return text;
   }
 
   // The value grabbed follows the pointer; the far end of the axis stays put.
@@ -998,6 +1090,23 @@ export class GraphView {
     fill(this.below, 
       warningsBox(res.warnings),
       section('R code for this graph', codeBlock(r?.code || ''), { k: 'gcode', open: false }));
+  }
+
+  // Copies the graph as a picture (PNG, at the export resolution up to 300 dpi).
+  copyPlot() {
+    const g = this.item;
+    if (!navigator.clipboard?.write || typeof ClipboardItem === 'undefined') {
+      toast('This browser cannot copy pictures to the clipboard. Use Export instead.', 'error', 6000);
+      return;
+    }
+    const dpi = Math.min(Number(g.size.dpi) || 300, 300);
+    const png = this.app.engine.exportGraph(g.id, 'png', { width: g.size.width, height: g.size.height, dpi })
+      .then((out) => new Blob([out.bytes], { type: 'image/png' }));
+    toast('Copying the graph…');
+    // The clipboard item is made at once (some browsers need that) and filled when R has drawn the picture.
+    navigator.clipboard.write([new ClipboardItem({ 'image/png': png })])
+      .then(() => toast('Copied the graph (PNG). Paste it into slides, a document or an email.'))
+      .catch((e) => toast(`Could not copy the graph: ${e.message || e}. Use Export instead.`, 'error', 8000));
   }
 
   async exportPlot() {

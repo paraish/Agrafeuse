@@ -669,3 +669,14 @@ details.layouts { margin-top: 4px; }
 details.layouts summary { cursor: pointer; color: var(--accent); width: max-content; }
 details.layouts ul { margin: 6px 0 2px; padding-left: 18px; max-width: 900px; }
 details.layouts li { margin: 3px 0; }
+.delete-plan p { margin: 0 0 6px; }
+.delete-plan p.hint { margin-top: 10px; }
+ul.delete-list { list-style: none; margin: 0 0 10px; padding: 6px 10px; background: var(--panel-2); border: 1px solid var(--border); border-radius: 6px; max-height: 240px; overflow: auto; }
+ul.delete-list li { display: flex; align-items: center; gap: 6px; padding: 2px 0; }
+ul.delete-list .muted { font-size: 12px; }
+.label-zone { position: absolute; z-index: 3; border-radius: 4px; cursor: text; }
+.label-zone:hover { background: color-mix(in srgb, var(--accent) 8%, transparent); outline: 1px dashed var(--accent-line); }
+.label-editor { position: absolute; z-index: 6; transform: translate(-50%, -50%); min-width: 180px; width: 40%; max-width: 90%;
+  font-size: 14px; text-align: center; padding: 4px 8px; border: 1px solid var(--accent); border-radius: 6px;
+  background: var(--panel); color: var(--text); box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18); }
+.export-actions { display: inline-flex; gap: 6px; flex: none; }

@@ -188,6 +188,21 @@ try {
   check(styled.includes('quote(underline(') && styled.includes('angle = 45'), 'underlined Y title and angled X labels');
   check(await page.locator('.preview-status .message.error').count() === 0, 'formatted graph renders');
   check((await page.evaluate(() => window.agrafeuse.store.item().theme.legend)) === 'auto' && !styled.includes('legend.position'), 'new graphs have automatic legends');
+  // Axis titles are edited right on the graph.
+  await page.waitForSelector('[data-k="edit-left-title"]:not([hidden])', { timeout: 10000 });
+  const yBefore = await page.evaluate(() => window.agrafeuse.store.item().labels.y || '');
+  await page.click('[data-k="edit-left-title"]');
+  check(await page.isVisible('[data-k="label-editor"]') && (await page.inputValue('[data-k="label-editor"]')).length > 0, 'clicking the Y axis title opens it for editing, with its text');
+  await page.fill('[data-k="label-editor"]', 'Dry mass (g)');
+  await page.keyboard.press('Enter');
+  await settle();
+  const titled = await page.evaluate(() => window.agrafeuse.engine.result(window.agrafeuse.store.selected).code);
+  check((await page.evaluate(() => window.agrafeuse.store.item().labels.y)) === 'Dry mass (g)' && titled.includes('"Dry mass (g)"')
+    && (await page.inputValue('[data-k="ylab"]').catch(() => 'Dry mass (g)')) === 'Dry mass (g)', `the Y title changes on the graph and in the panel (was "${yBefore}")`);
+  await page.click('[data-k="edit-bottom-title"]');
+  await page.fill('[data-k="label-editor"]', 'Not this');
+  await page.keyboard.press('Escape');
+  check(!(await page.evaluate(() => window.agrafeuse.store.item().labels.x || '')).includes('Not this') && !(await page.isVisible('[data-k="label-editor"]')), 'Escape leaves the title as it was');
 
   // Stretch the Y axis by dragging it, then reset it with a double-click.
   await page.waitForFunction(() => !document.querySelector('.axis-zone-v')?.hidden, null, { timeout: 30000 });
@@ -425,6 +440,18 @@ try {
   await page.uncheck('[data-k="svg-text"]');
   const svgOutlined = (await exportAs('svg')).bytes.toString('utf8');
   check(svgOutlined.includes('<svg') && !/<text[ >]/.test(svgOutlined), 'export SVG with text as outlines');
+  // Copy to the clipboard as a picture.
+  await page.context().grantPermissions(['clipboard-read', 'clipboard-write'], { origin: `http://127.0.0.1:${PORT}` });
+  await page.click('[data-k="copy-graph"]');
+  await page.waitForFunction(() => /Copied the graph|Could not copy/.test(document.querySelector('.toasts')?.textContent || ''), null, { timeout: 30000 });
+  const clip = await page.evaluate(async () => {
+    const items = await navigator.clipboard.read();
+    const item = items.find((i) => i.types.includes('image/png'));
+    const blob = item && await item.getType('image/png');
+    const head = blob ? new Uint8Array(await blob.slice(0, 4).arrayBuffer()) : [];
+    return { types: items.flatMap((i) => i.types), png: String.fromCharCode(...head).includes('PNG') };
+  });
+  check(clip.png, `Copy puts the graph on the clipboard as a PNG picture (${clip.types.join(', ')})`);
 
   // --- save .RData and open it again -------------------------------------------------------------
   const before = await page.$$eval('.nav-item .name', (els) => els.map((e) => e.textContent));
@@ -459,12 +486,30 @@ try {
   check(await page.textContent('.sheet th[data-c="1"] .colname') === 'dose, mg', 'CSV with quoted fields imported');
 
   // --- undo ----------------------------------------------------------------------------------------
+  // A data table with linked items: the dialog lists them, and they go too.
   const count = await page.locator('.nav li[data-id]').count();
+  const firstId = await page.locator('.nav li[data-id]').first().getAttribute('data-id');
+  const plan = await page.evaluate(async (id) => { const { deletionPlan } = await import('./js/model.js'); return deletionPlan(window.agrafeuse.store.project, id); }, firstId);
   await page.locator('.nav li[data-id]').first().hover();
   await page.locator('.nav li[data-id]').first().locator('.item-menu').click();
   await page.click('.popover button:has-text("Delete")');
-  await page.click('.modal-actions button:has-text("Delete")');
-  check(await page.locator('.nav li[data-id]').count() === count - 1, 'deleted an item');
+  await page.waitForSelector('.delete-plan');
+  const listed = await page.$$eval('.delete-list li', (els) => els.map((e) => e.dataset.id));
+  check(plan.gone.length > 2 && listed.length === plan.gone.length - 1 + plan.kept.length && plan.gone.slice(1).every((id) => listed.includes(id)),
+    `deleting a data table first lists the ${plan.gone.length - 1} linked items that go with it`);
+  await page.click(`.modal-actions button:has-text("Delete all ${plan.gone.length}")`);
+  check(await page.locator('.nav li[data-id]').count() === count - plan.gone.length
+    && await page.evaluate((ids) => ids.every((id) => !window.agrafeuse.store.project.items.some((i) => i.id === id)), plan.gone), 'they are deleted together');
+  await page.waitForTimeout(700);
+  await page.keyboard.press('Control+z');
+  await page.waitForTimeout(300);
+  check(await page.locator('.nav li[data-id]').count() === count, 'one undo brings them all back');
+  // "Delete only" keeps the linked items.
+  await page.locator('.nav li[data-id]').first().hover();
+  await page.locator('.nav li[data-id]').first().locator('.item-menu').click();
+  await page.click('.popover button:has-text("Delete")');
+  await page.click('.modal-actions button:has-text("Delete only")');
+  check(await page.locator('.nav li[data-id]').count() === count - 1, 'or delete only the table');
   await page.waitForTimeout(700);
   await page.keyboard.press('Control+z');
   await page.waitForTimeout(300);

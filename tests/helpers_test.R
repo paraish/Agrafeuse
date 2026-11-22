@@ -87,6 +87,12 @@ ok("brackets above a fixed y axis top", {
   stopifnot(as.numeric(calc_element("plot.margin", theme_get() + q3$theme))[1] > 30)
   stopifnot(identical(ag_stats_room(ggplot(pg, aes(group, weight)) + inside)$coordinates$clip, "on"))
 })
+ok("geometry: where the titles are", {
+  g <- jsonlite::fromJSON(ag_draw(ggplot(mtcars, aes(wt, mpg)) + geom_point() + labs(title = "T"), tempfile(fileext = ".svg"), "svg", 5, 4, geometry = TRUE))$geometry
+  stopifnot(all(c("xlab-b", "ylab-l", "title") %in% names(g$labels)), g$labels$`xlab-b`$top > g$bottom, g$labels$`ylab-l`$right < g$left)
+  f <- jsonlite::fromJSON(ag_draw(ggplot(mtcars, aes(wt, mpg)) + geom_point() + labs(x = NULL) + facet_wrap(~cyl), tempfile(fileext = ".svg"), "svg", 5, 4, geometry = TRUE))$geometry
+  stopifnot(is.null(f$left), identical(names(f$labels), "ylab-l"))
+})
 ok("eval_json warning", cat(ag_eval_json("x <- as.numeric('a'); 'hi'"), "\n"))
 ok("eval_json error", cat(ag_eval_json("stop('boom')"), "\n"))
 ok("eval_json error call", cat(ag_eval_json("log(-1:'a')"), "\n"))

@@ -5,7 +5,7 @@ import { toRName } from './rcode.js';
 import { dataCode, dataSchema } from './codegen/data.js';
 import { transformCode } from './codegen/transform.js';
 import { analysisCode, analysisPackages, TESTS, testDefaults } from './codegen/stats.js';
-import { graphCode, graphDeps } from './codegen/graph.js';
+import { graphCode, graphDeps, plotBase, GEOMS } from './codegen/graph.js';
 
 export const KINDS = {
   data: { label: 'Data tables', one: 'Data table', prefix: 'Data', fallback: 'data' },
@@ -227,6 +227,49 @@ export function removeItem(project, id) {
     }
     if (it.kind === 'transform' && it.input === id) it.input = '';
     if (it.kind === 'analysis' && it.dataset === id) it.dataset = '';
+  }
+}
+
+// The datasets a graph draws (its layers', hidden ones too), not the analyses it only takes p values from.
+function graphSources(g) {
+  const base = plotBase(g);
+  return [...new Set((g.layers || []).filter((l) => GEOMS[l.geom] && !GEOMS[l.geom].noData).map((l) => l.dataset || base.dataset).filter(Boolean))];
+}
+
+// What deleting item `id` takes with it. gone: the item, and everything that
+// cannot work without it (a transform or analysis of a deleted dataset, a graph
+// whose data is all deleted), in project order. kept: items that use some of
+// it but keep going without (a graph that loses some layers, or the p values
+// of a deleted analysis).
+export function deletionPlan(project, id) {
+  const gone = new Set([id]);
+  for (let grew = true; grew;) {
+    grew = false;
+    for (const it of project.items) {
+      if (gone.has(it.id)) continue;
+      let dies = false;
+      if (it.kind === 'transform') dies = gone.has(it.input);
+      else if (it.kind === 'analysis') dies = gone.has(it.dataset);
+      else if (it.kind === 'graph') { const s = graphSources(it); dies = s.length > 0 && s.every((d) => gone.has(d)); }
+      if (dies) { gone.add(it.id); grew = true; }
+    }
+  }
+  return {
+    gone: project.items.filter((it) => gone.has(it.id)).map((it) => it.id),
+    kept: project.items.filter((it) => !gone.has(it.id) && depsOf(it).some((d) => gone.has(d))).map((it) => it.id),
+  };
+}
+
+// Deletes the items of a deletion plan. What is kept loses only the parts that used them.
+export function removeItems(project, ids) {
+  const gone = new Set(ids);
+  project.items = project.items.filter((it) => !gone.has(it.id));
+  for (const it of project.items) {
+    if (it.kind !== 'graph') continue;
+    const base = plotBase(it);
+    it.layers = (it.layers || []).filter((l) => !gone.has(l.dataset || base.dataset));
+    if (it.base && gone.has(it.base.dataset)) it.base.dataset = '';
+    it.annotations = (it.annotations || []).filter((a) => !gone.has(a.analysis) && !gone.has(a.dataset));
   }
 }
 

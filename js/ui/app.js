@@ -3,7 +3,7 @@
 import { h, fill, icon, rebuild, download, pickFile, safeFilename } from './dom.js';
 import { button, iconButton, select, modal, toast, field, input } from './widgets.js';
 import {
-  KINDS, itemsOf, getItem, assignRName, depsOf, dependentsOf, removeItem, clone, newId, uniqueName,
+  KINDS, itemsOf, getItem, assignRName, depsOf, dependentsOf, removeItem, removeItems, deletionPlan, clone, newId, uniqueName,
   newDataTable, newTransform, newAnalysis, datasets, emptyProject,
 } from '../model.js';
 import { exampleProject } from '../example.js';
@@ -474,19 +474,42 @@ export class App {
     this.added(c);
   }
 
+  // Deleting an item also deletes what is linked to it and cannot work without
+  // it (its transforms, analyses and graphs), once the user has seen the list.
   async remove(it) {
     const p = this.store.project;
-    const users = dependentsOf(p, it.id).map((id) => getItem(p, id)?.name).filter(Boolean);
-    const ok = await modal({
-      title: `Delete "${it.name}"?`,
-      body: h('p', users.length ? `These use it and will need another source: ${users.join(', ')}.` : 'You can undo this with Ctrl+Z.'),
-      actions: [{ label: 'Cancel', value: () => null }, { label: 'Delete', kind: 'danger', value: () => true }],
+    const plan = deletionPlan(p, it.id);
+    const others = plan.gone.filter((id) => id !== it.id).map((id) => getItem(p, id));
+    const kept = plan.kept.map((id) => getItem(p, id));
+    const list = (items, what) => h('ul.delete-list', items.map((x) => h('li', { 'data-id': x.id },
+      icon(KIND_ICON[x.kind]), h('span.name', x.name), what ? h('span.muted', what(x)) : null)));
+    const keptNote = (g) => {
+      const gone = new Set(plan.gone);
+      const drops = (g.layers || []).some((l) => gone.has(l.dataset || g.base?.dataset)) ? 'loses the layers that use it' : null;
+      const stats = (g.annotations || []).some((a) => gone.has(a.analysis) || gone.has(a.dataset)) ? 'loses the p values from it' : null;
+      return ` (${[drops, stats].filter(Boolean).join(' and ') || 'loses what used it'})`;
+    };
+    const n = others.length;
+    const actions = [{ label: 'Cancel', value: () => null }];
+    if (n) actions.push({ label: `Delete only "${it.name}"`, value: () => 'one' });
+    actions.push({ label: n ? `Delete all ${n + 1}` : 'Delete', kind: 'danger', value: () => 'all' });
+    const choice = await modal({
+      title: n ? `Delete "${it.name}" and what is linked to it?` : `Delete "${it.name}"?`,
+      body: h('div.delete-plan',
+        n ? [h('p', h('b', `${n} linked item${n > 1 ? 's' : ''} will be deleted too`), ', as they cannot work without it:'), list(others)] : null,
+        kept.length ? [h('p', n ? 'These are kept, without what came from it:' : 'These use it and are kept, without what came from it:'), list(kept, keptNote)] : null,
+        n ? h('p.hint', `"Delete only" keeps the linked items, which then need another source.`) : null,
+        h('p.hint', 'You can undo this with Ctrl+Z.')),
+      actions,
     });
-    if (!ok) return;
-    removeItem(p, it.id);
-    if (this.store.selected === it.id) this.store.selected = p.items[0]?.id || null;
+    if (!choice) return;
+    const ids = choice === 'all' ? plan.gone : [it.id];
+    if (choice === 'all') removeItems(p, ids);
+    else removeItem(p, it.id);
+    if (ids.includes(this.store.selected)) this.store.selected = p.items[0]?.id || null;
     this.store.change(null, { structural: true });
     this.mount();
+    if (ids.length > 1) toast(`Deleted "${it.name}" and ${ids.length - 1} linked item${ids.length > 2 ? 's' : ''}. Ctrl+Z brings them back.`);
   }
 
   // ---- files -------------------------------------------------------------------------------------
