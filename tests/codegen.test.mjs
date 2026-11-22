@@ -9,6 +9,7 @@ import { addFixtures } from './fixtures.mjs';
 import { getItem, newDataTable, newTransform, newAnalysis, newGraph, itemCode, topoOrder, itemPackages, upgradeProject } from '../js/model.js';
 import { FORMULA_PRESETS } from '../js/ui/formulaDialog.js';
 import { renameInExpr, renameColumn } from '../js/rename.js';
+import { usedColumns, guessMapping, graphForDataset, mainDataset } from '../js/graphCopy.js';
 import { emptyProject, deletionPlan, removeItems } from '../js/model.js';
 import { dataSchema } from '../js/codegen/data.js';
 import { testDefaults, usesMixedModel } from '../js/codegen/stats.js';
@@ -326,6 +327,21 @@ const comboTable = newDataTable(p, {
 newGraph(p, { name: 'Combinations graph', theme: { name: 'lab', base_size: 14, legend: 'auto' },
   layers: [{ id: 'l1', geom: 'point', dataset: comboTable.id, aes: { x: map('Dose'), y: map('CD235'), colour: map('Drug'), shape: map('Line') }, params: {} }] });
 
+// The look of a graph on other data (R runs the copy below).
+const lookSrc = newGraph(p, {
+  name: 'Look source',
+  base: { dataset: plantLong.id, aes: { x: map('group'), y: map('weight'), colour: map('group') } },
+  layers: [{ id: 'l1', geom: 'jitter', dataset: '', aes: { size: fx(2.5) }, params: geomDefaults('jitter') }, { id: 'l2', geom: 'mean_bar', dataset: '', aes: { fill: fx('#dddddd') }, params: geomDefaults('mean_bar') }],
+  labels: { title: 'Look', x: 'Treatment', y: 'Dry weight (g)', legend: '' },
+  y_scale: { trans: 'identity', min: '0', max: '7', from_zero: true },
+  theme: { name: 'classic', base_size: 13, legend: 'auto' },
+  style: { margin: { r: 20 } },
+  annotations: [{ id: 'c1', kind: 'compare', method: 'wilcox.test', comparisons: 'all' }, { id: 'b1', kind: 'brackets', analysis: p.items.find((i) => i.kind === 'analysis' && i.dataset === plantLong.id).id }],
+});
+const lookUsed = usedColumns(lookSrc, plantLong.id);
+const lookMap = guessMapping(lookUsed, { columns: [{ name: 'group', type: 'factor' }, { name: 'weight', type: 'numeric' }] }, dataSchema(tooth));
+const lookCopy = graphForDataset(p, lookSrc, plantLong.id, tooth.id, lookMap);
+
 // Schemas: data tables from JS, transforms unknown (null) like before R runs.
 const schemaOf = (id) => {
   const it = getItem(p, id);
@@ -405,6 +421,14 @@ expect(renameInExpr('log(log) + paste(a, sep = sep)', 'log', 'lg') === 'log(lg) 
   expect(q.items.length === 3 && gab.layers.length === 1 && gab.layers[0].dataset === b.id && gb.annotations.length === 0, 'kept graphs lose only what used it');
   expect(JSON.stringify(deletionPlan(q, gb.id)) === JSON.stringify({ gone: [gb.id], kept: [] }), 'a graph alone');
 }
+expect(JSON.stringify(lookUsed.map((u) => u.col)) === '["group","weight"]' && lookUsed[0].roles.includes('X') && lookUsed[0].roles.includes('Colour'), `the columns a graph uses (${JSON.stringify(lookUsed)})`);
+expect(lookMap.group === 'supplement' && lookMap.weight === 'length', `guessed columns by kind (${JSON.stringify(lookMap)})`);
+expect(mainDataset(lookCopy) === tooth.id && lookCopy.base.aes.x.col === 'supplement' && lookCopy.base.aes.colour.col === 'supplement' && lookCopy.base.aes.y.col === 'length'
+  && lookCopy.layers.every((l) => !l.dataset) && lookCopy.layers[0].aes.size.value === 2.5, 'the copy draws the new data with the same layers');
+expect(lookCopy.theme.name === 'classic' && lookCopy.style.margin.r === 20 && lookCopy.labels.title === 'Look' && !lookCopy.labels.x && !lookCopy.labels.y && lookCopy.y_scale.max === '' && lookCopy.y_scale.from_zero,
+  'the look is kept; titles and ranges of swapped columns are not');
+expect(lookCopy.annotations.length === 1 && lookCopy.annotations[0].kind === 'compare' && lookSrc.annotations.length === 2 && p.items.indexOf(lookCopy) === p.items.indexOf(lookSrc) + 1, 'tests on the graph stay, p values of old analyses go; the original is untouched');
+expect(codeOf('Look source').includes('plot.margin = margin(6.5, 26.5, 6.5, 6.5)'), 'extra space around the graph');
 console.log('code checks ok');
 
 const dir = mkdtempSync(join(tmpdir(), 'agtest-'));

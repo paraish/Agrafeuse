@@ -680,3 +680,13 @@ ul.delete-list .muted { font-size: 12px; }
   font-size: 14px; text-align: center; padding: 4px 8px; border: 1px solid var(--accent); border-radius: 6px;
   background: var(--panel); color: var(--text); box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18); }
 .export-actions { display: inline-flex; gap: 6px; flex: none; }
+.fit-note { display: flex; align-items: center; gap: 8px; margin: 8px auto 0; max-width: 680px; padding: 6px 8px 6px 12px;
+  font-size: 13px; color: var(--text); background: var(--warn-weak); border: 1px solid color-mix(in srgb, var(--warn) 35%, transparent); border-radius: 8px; }
+.fit-note > .icon { color: var(--warn); flex: none; }
+.fit-note > span { flex: 1; }
+.fit-note[hidden] { display: none; }
+table.reuse-map { border-collapse: collapse; margin: 8px 0 4px; }
+table.reuse-map th { text-align: left; font-size: 12px; color: var(--muted); font-weight: 600; padding: 2px 8px 4px 0; }
+table.reuse-map td { padding: 3px 8px 3px 0; vertical-align: middle; }
+table.reuse-map select { min-width: 180px; }
+.reuse-start { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); font-size: 13px; }

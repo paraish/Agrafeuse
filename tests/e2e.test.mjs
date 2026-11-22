@@ -220,6 +220,22 @@ try {
   await settle();
   check((await page.evaluate(() => window.agrafeuse.store.item().y_scale.max)) === '', 'double-clicking the axis resets its range');
 
+  // A title too long for the picture: a quiet note offers to make room for it.
+  check(!(await page.isVisible('.fit-note')), 'no note while everything fits');
+  const size0 = await page.evaluate(() => ({ ...window.agrafeuse.store.item().size }));
+  await page.click('[data-k="fmt-tab-text"]');
+  await page.fill('[data-k="title"]', 'Dry weight of every plant after eight weeks of each treatment');
+  await settle();
+  await page.waitForSelector('.fit-note:not([hidden])', { timeout: 15000 }).catch(() => {});
+  check(await page.isVisible('.fit-note') && /cut off at the .*edge/.test(await page.textContent('.fit-note')), `a cut-off title is pointed out (${(await page.textContent('.fit-note')).trim()})`);
+  await page.click('[data-k="fit-expand"]');
+  for (let i = 0; i < 4; i++) await settle();
+  const fitted = await page.evaluate(() => { const g = window.agrafeuse.store.item(); return { size: g.size, margin: g.style.margin || {} }; });
+  check(!(await page.isVisible('.fit-note')) && fitted.size.width > size0.width && (fitted.margin.l > 0 || fitted.margin.r > 0)
+    && (await page.evaluate(() => window.agrafeuse.engine.result(window.agrafeuse.store.selected).code)).includes('plot.margin = margin('),
+  `"Expand to fit" makes room until it fits (${size0.width} → ${fitted.size.width} in wide)`);
+  await page.click('[data-k="fmt-tab-axes"]');
+
   // Add a layer and turn it into a box plot with a fixed colour.
   await page.click('[data-k="add-layer"]');
   const lastGeom = page.locator('.layer').last().locator('.card-head select');
@@ -229,6 +245,26 @@ try {
   check(await page.locator('.preview-status .message.error').count() === 0, 'added a box plot layer with a fixed colour');
   const code = await page.evaluate(() => window.agrafeuse.engine.result(window.agrafeuse.store.selected).code);
   check(code.includes('geom_boxplot(') && code.includes('colour = "#000000"'), 'graph code has the new layer');
+
+  // The look of this graph on other data.
+  const srcGraph = await page.evaluate(() => window.agrafeuse.store.selected);
+  const plantLongId = await page.evaluate(() => window.agrafeuse.store.project.items.find((i) => i.name === 'Plant growth (long)').id);
+  await page.click('[data-k="reuse-graph"]');
+  await page.waitForSelector('.reuse');
+  await page.selectOption('[data-k="reuse-ds"]', plantLongId);
+  await page.waitForTimeout(500);
+  const picked = await page.$$eval('.reuse-map select', (els) => els.map((e) => e.value));
+  check(picked.length >= 2 && picked.every(Boolean), `each column the graph uses gets one of the new data (${picked.join(', ')})`);
+  await page.click('[data-k="reuse-create"]');
+  await settle();
+  const reused = await page.evaluate((src) => {
+    const s = window.agrafeuse.store; const g = s.item(); const o = s.project.items.find((i) => i.id === src);
+    return { id: g.id, ds: g.base?.dataset || g.layers.find((l) => l.dataset)?.dataset, geoms: g.layers.map((l) => l.geom).join(), srcGeoms: o.layers.map((l) => l.geom).join(), width: g.size.width, srcWidth: o.size.width };
+  }, srcGraph);
+  check(reused.id !== srcGraph && reused.ds === plantLongId && reused.geoms === reused.srcGeoms && reused.width === reused.srcWidth
+    && await page.locator('.preview-status .message.error').count() === 0, 'a new graph with the same look draws the other data');
+  await page.click(`.nav-item[data-k="nav-${srcGraph}"]`);
+  await settle();
 
   // --- analysis, then onto the graph ----------------------------------------------------------
   await page.click('[data-k="new-analysis"]');

@@ -12,6 +12,7 @@ import { parseDelimited, tableFromRows } from '../codegen/data.js';
 import { TESTS, TEST_CATEGORIES } from '../codegen/stats.js';
 import { projectScript } from '../codegen/script.js';
 import { Copilot } from './copilot.js';
+import { mainDataset, usedColumns, guessMapping, graphForDataset } from '../graphCopy.js';
 import { DataView } from './dataView.js';
 import { TransformView } from './transformView.js';
 import { GraphView } from './graphView.js';
@@ -433,6 +434,8 @@ export class App {
               state.wide ? null : t.needs.includes('y') ? field(t.key === 'histogram' ? 'Values' : 'Y', select(state.y, cols, (v) => { state.y = v; }, { k: 'g-y', placeholder: 'Choose…' })) : null,
               state.wide ? null : t.needs.includes('group') || t.optional?.includes('group') ? field(t.key === 'grouped_bars' ? 'Groups side by side' : 'Lines by (optional)', select(state.group, cols, (v) => { state.group = v; }, { k: 'g-group', placeholder: '(none)' })) : null),
             state.wide ? h('div.hint', 'This table has one column per group, so the graph will use its long version (a "group" and a "value" column), which Agrafeuse creates for you.') : null,
+            itemsOf(p, 'graph').length ? h('div.reuse-start', h('span.muted', 'Or give this data the look of one of your graphs:'),
+              select('', itemsOf(p, 'graph').map((x) => [x.id, x.name]), (v) => { if (v) close({ reuse: v, dataset: state.dataset }); }, { k: 'g-reuse', placeholder: 'Choose a graph…' })) : null,
             h('div.modal-actions', button('Cancel', () => close(null)), button('Create graph', () => close(state), { kind: 'primary', k: 'create-graph' })));
         };
         draw();
@@ -440,6 +443,7 @@ export class App {
       },
     });
     if (!result) return;
+    if (result.reuse) { this.reuseGraph(getItem(p, result.reuse), { dataset: result.dataset }); return; }
     let ds = result.dataset;
     if (result.wide) {
       const nums = this.engine.schemaOf(ds).columns.filter((c) => c.type === 'numeric').map((c) => c.name);
@@ -457,11 +461,71 @@ export class App {
     const outside = (e) => { if (!pop.contains(e.target)) close(); };
     const pop = h('div.popover', { role: 'menu' },
       h('button', { type: 'button', role: 'menuitem', onclick: () => { close(); this.duplicate(it); } }, icon('copy'), 'Duplicate'),
+      it.kind === 'graph' ? h('button', { type: 'button', role: 'menuitem', onclick: () => { close(); this.reuseGraph(it); } }, icon('graph'), 'Use with other data…') : null,
       h('button', { type: 'button', role: 'menuitem', class: 'danger', onclick: () => { close(); this.remove(it); } }, icon('trash'), 'Delete'));
     const r = anchor.getBoundingClientRect();
     Object.assign(pop.style, { top: `${r.bottom + 4}px`, left: `${Math.min(r.left, window.innerWidth - 180)}px` });
     document.body.append(pop);
     setTimeout(() => document.addEventListener('mousedown', outside), 0);
+  }
+
+  // The look of graph g on other data: pick the data and, for each column the
+  // graph uses, the column of the new data that takes its place.
+  async reuseGraph(g, { dataset } = {}) {
+    const p = this.store.project;
+    const from = mainDataset(g);
+    if (!from) { toast('This graph has no data to swap yet.', 'error'); return; }
+    const sources = datasets(p).filter((d) => d.id !== from);
+    if (!sources.length) { toast('There is no other dataset yet: add or import another data table first.', 'error'); return; }
+    await this.engine.ensure(from).catch(() => {});
+    const used = usedColumns(g, from);
+    const groupsUsed = used.some(({ col }) => this.engine.schemaOf(from)?.columns?.find((c) => c.name === col)?.type !== 'numeric');
+    const state = { dataset: dataset && dataset !== from && getItem(p, dataset) ? dataset : sources[0].id, map: {}, wide: false, schema: null };
+    const load = async () => {
+      await this.engine.ensure(state.dataset).catch(() => {});
+      const s = this.engine.schemaOf(state.dataset);
+      const cols = s?.columns || [];
+      const nums = cols.filter((c) => c.type === 'numeric');
+      // One column per group (and the graph shows groups): use its long version, as a new graph would.
+      state.wide = groupsUsed && nums.length >= 2 && cols.every((c) => c.type === 'numeric' || isRowNames(c.name));
+      state.schema = state.wide ? { columns: [...cols.filter((c) => isRowNames(c.name)), { name: 'group', type: 'factor' }, { name: 'value', type: 'numeric' }] } : s;
+      state.map = guessMapping(used, this.engine.schemaOf(from), state.schema);
+    };
+    await load();
+    const result = await modal({
+      title: `Use the look of "${g.name}" with other data`,
+      wide: true,
+      body: (close) => {
+        const host = h('div.reuse');
+        const draw = () => {
+          const options = (state.schema?.columns || []).map((c) => [c.name, c.name]);
+          fill(host,
+            h('p.hint', 'A copy of the graph, with the same layers, colours, theme, fonts, size and text boxes, drawing other data.'),
+            field('Data', select(state.dataset, sources.map((d) => [d.id, d.name]), async (v) => { state.dataset = v; await load(); draw(); }, { k: 'reuse-ds' })),
+            state.wide ? h('div.hint', 'This table has one column per group, so the graph will use its long version (a "group" and a "value" column), which Agrafeuse creates for you.') : null,
+            used.length ? h('table.reuse-map',
+              h('thead', h('tr', h('th', `In "${g.name}"`), h('th', ''), h('th', 'Becomes'))),
+              h('tbody', used.map(({ col, roles }) => h('tr',
+                h('td', h('b', col), h('span.muted', ` (${roles.join(', ')})`)),
+                h('td', '→'),
+                h('td', select(state.map[col] || '', options, (v) => { state.map[col] = v; }, { k: `reuse-col-${col}`, placeholder: 'Choose…' })))))) : null,
+            h('p.hint', 'Titles typed for a column that changes go back to the new column\'s name. P values from analyses of the old data are left out; tests run on the graph itself are kept.'),
+            h('div.modal-actions', button('Cancel', () => close(null)), button('Create graph', () => {
+              const missing = used.find(({ col }) => !state.map[col]);
+              if (missing) { toast(`Choose a column for ${missing.col}.`, 'error'); return; }
+              close(state);
+            }, { kind: 'primary', k: 'reuse-create' })));
+        };
+        draw();
+        return host;
+      },
+    });
+    if (!result) return;
+    let ds = result.dataset;
+    if (result.wide) ds = this.longVersion(ds, this.engine.schemaOf(ds).columns.filter((c) => c.type === 'numeric').map((c) => c.name)).id;
+    const c = graphForDataset(p, g, from, ds, result.map);
+    this.added(c);
+    toast(`Made "${c.name}": the look of "${g.name}" with ${getItem(p, result.dataset).name}.`);
   }
 
   duplicate(it) {

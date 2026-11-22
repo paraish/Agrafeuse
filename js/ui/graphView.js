@@ -1,11 +1,12 @@
 // The graph builder: layers on the left; the live preview, which can be resized by
 // dragging, with the formatting controls underneath it on the right.
-import { h, fill, rebuild, debounce, download, safeFilename } from './dom.js';
+import { h, fill, rebuild, debounce, download, safeFilename, icon } from './dom.js';
 import {
   field, select, bindSelect, bindInput, bindCheck, checkbox, colour, segmented, iconButton, button,
   columnOptions, levelsOf, section, codeBlock, messageBox, input, toast, columnPicker,
 } from './widgets.js';
 import { itemHeader, warningsBox } from './common.js';
+import { measureOverflow, edgesText } from './overflow.js';
 import {
   GEOMS, GEOM_CATEGORIES, AES, PLOT_AES, SHAPES, LINETYPES, THEMES, PALETTES, NUMBER_FORMATS, FONTS,
   COMPARE_TESTS, NOTE_DEFAULTS, VIRIDIS_OPTIONS, geomDefaults, boldTitles, ensureBase, effectiveLayers, sideBySide, scaleOwners,
@@ -71,7 +72,7 @@ export class GraphView {
   controls() {
     const g = this.item;
     return h('div',
-      itemHeader(this.app, g, 'Graph'),
+      itemHeader(this.app, g, 'Graph', [button('Use with other data', () => this.app.reuseGraph(g), { iconName: 'copy', k: 'reuse-graph', title: 'Make a copy of this graph, with its look, that draws another dataset' })]),
       section('Whole plot', this.baseCard(), { k: 'base', sub: this.baseSummary() }),
       section('Layers', [
         h('div.hint', 'Each layer draws the data one way. Layers listed first are drawn first (underneath).'),
@@ -695,7 +696,11 @@ export class GraphView {
         h('h4', 'Look'),
         this.fmtRow('Theme', bindSelect(g.theme, 'name', THEMES.map(([k, l]) => [k, l]), ch(true), { k: 'theme' })),
         this.fmtRow('Orientation', bindCheck(g, 'flip', 'Horizontal (swap X and Y)', ch(), { k: 'flip' })),
-        this.fmtRow('Size', h('span.muted', 'Drag the graph\'s edges, or type the size above it.'))),
+        this.fmtRow('Size', h('span.muted', 'Drag the graph\'s edges, or type the size above it.')),
+        this.fmtRow('Extra space', ...[['t', 'top'], ['r', 'right'], ['b', 'bottom'], ['l', 'left']].map(([k, label]) => {
+          g.style.margin = g.style.margin || {};
+          return this.numberBox(g.style.margin, k, { k: `margin-${k}`, placeholder: label, step: 1, width: '58px' });
+        }), h('span.muted', 'pt around the graph'))),
       h('div.fmt-col',
         h('h4', 'Panels'),
         this.fmtRow('Split by', bindSelect(g.facet, 'by', cols, ch(true), { placeholder: '(one panel)', k: 'facet' })),
@@ -773,7 +778,7 @@ export class GraphView {
         h('span.export-actions',
           button('Copy', () => this.copyPlot(), { iconName: 'copy', k: 'copy-graph', title: 'Copy the graph to the clipboard as a picture (PNG), to paste into slides, a document or an email' }),
           button('Export', () => this.exportPlot(), { iconName: 'download', kind: 'primary', k: 'export' }))),
-      this.stage, this.status, this.formatHost, this.below);
+      this.stage, this.fitNote = h('div.fit-note', { hidden: true, role: 'status' }), this.status, this.formatHost, this.below);
     this.zoomHost = this.right.querySelector('.segmented');
     this.resize = new ResizeObserver(() => this.fitImage());
     this.resize.observe(this.right);
@@ -1077,7 +1082,9 @@ export class GraphView {
       this.fitImage();
       this.stage.classList.remove('stale');
       fill(this.status);
+      this.checkFit(res.svg);
     } else {
+      this.checkFit(null);
       this.img.style.transform = '';
       this.geometry = null;
       this.placeAxisZones();
@@ -1090,6 +1097,49 @@ export class GraphView {
     fill(this.below, 
       warningsBox(res.warnings),
       section('R code for this graph', codeBlock(r?.code || ''), { k: 'gcode', open: false }));
+  }
+
+  // ---- parts of the graph cut off at the picture's edges -------------------------------------
+
+  // A quiet note under the graph when something sticks out (e.g. a long title),
+  // with a button that makes room for it. After that button, a few more rounds
+  // run by themselves until everything fits.
+  checkFit(svg) {
+    const ov = svg ? measureOverflow(svg) : null;
+    const cut = ov && (ov.left || ov.right || ov.top || ov.bottom);
+    if (cut && this.fitRounds > 0) { this.fitRounds--; this.fitToContent(ov); return; }
+    this.fitRounds = 0;
+    this.overflow = cut ? ov : null;
+    const g = this.item;
+    const sig = cut ? `${g.size.width}x${g.size.height}:${edgesText(ov)}` : '';
+    if (!cut || sig === this.fitDismissed) { this.fitNote.hidden = true; return; }
+    fill(this.fitNote,
+      icon('alert', 15),
+      h('span', `Part of the graph is cut off at the ${edgesText(ov)}.`),
+      button('Expand to fit', () => { this.fitRounds = 3; this.fitToContent(this.overflow); }, { k: 'fit-expand', title: 'Add room on those sides and make the picture bigger by as much, so everything shows and the plot keeps its size' }),
+      iconButton('x', 'Dismiss', () => { this.fitDismissed = sig; this.fitNote.hidden = true; }, { k: 'fit-dismiss' }));
+    this.fitNote.hidden = false;
+  }
+
+  // Room on each side that was cut off, and a picture bigger by as much.
+  fitToContent(ov) {
+    if (!ov) return;
+    const g = this.item;
+    const st = g.style = g.style || {};
+    const m = st.margin = st.margin || {};
+    const pad = 3;
+    let w = Number(g.size.width) || 5;
+    let ht = Number(g.size.height) || 4;
+    for (const [side, key] of [['top', 't'], ['right', 'r'], ['bottom', 'b'], ['left', 'l']]) {
+      if (!(ov[side] > 0)) continue;
+      const add = Math.ceil(ov[side] + pad);
+      m[key] = (Number(m[key]) || 0) + add;
+      if (side === 'left' || side === 'right') w += add / 72; else ht += add / 72;
+    }
+    const up = (v) => Math.min(50, Math.ceil(v * 10 - 1e-6) / 10);
+    this.fitNote.hidden = true;
+    this.setSize(up(w), up(ht));
+    this.render();
   }
 
   // Copies the graph as a picture (PNG, at the export resolution up to 300 dpi).

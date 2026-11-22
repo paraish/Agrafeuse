@@ -700,6 +700,13 @@ export function graphCode(g, ctx) {
   const yAngle = Number(ST.y_text?.angle) || 0;
   element('axis.text.y', ST.y_text, yAngle ? [`angle = ${yAngle}`, `hjust = ${yAngle === 90 ? 0.5 : 1}`] : []);
   if (Number(ST.legend_text?.size) > 0) th.push(`legend.text = element_text(size = ${rnum(ST.legend_text.size)})`);
+  // Extra space around the graph (points), on top of the theme's own margin (half the base font size).
+  const M = ST.margin || {};
+  if (['t', 'r', 'b', 'l'].some((k) => Number(M[k]) > 0)) {
+    const half = (Number(T.base_size) || 14) / 2;
+    const side = (k) => rnum(half + Math.max(0, Number(M[k]) || 0));
+    th.push(`plot.margin = margin(${side('t')}, ${side('r')}, ${side('b')}, ${side('l')})`);
+  }
   if (Number(ST.axis_line) > 0) {
     th.push(`axis.line = element_line(linewidth = ${rnum(ST.axis_line)})`, `axis.ticks = element_line(linewidth = ${rnum(ST.axis_line)})`);
   }
